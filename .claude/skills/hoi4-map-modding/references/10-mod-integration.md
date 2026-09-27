@@ -19,7 +19,7 @@ docs/                        <- spec, prompts, logs
 ```
 name="Equal Earth World"
 version="0.1.0"
-supported_version="1.14.*"      # set to the installed game version at P00
+supported_version="1.19.*"      # confirm against the installed game at P00 (CHK-004)
 tags={ "Map" "Alternative History" }
 replace_path="history/states"
 replace_path="map/strategicregions"
@@ -40,7 +40,7 @@ Vanilla content hard-codes state and province ids. After replacing the map, thes
 - `common/national_focus/*`, `events/*`, `common/decisions/*`, `common/scripted_effects/*`, `common/scripted_triggers/*`, `common/on_actions/*`, `common/ai_strategy*/*`, `common/peace_conference/*`: `state = N`, `N = { ... }` state scopes, `owns_state`, `controls_state`, `transfer_state`, `province = N`.
 - `common/bookmarks/*`, `common/countries/*` (colours are fine), `common/unit_leader` / characters (no ids usually).
 - `map/buildings.txt`, `map/unitstacks.txt`, `map/airports.txt`, `map/rocketsites.txt`, `map/weatherpositions.txt`, `map/supply_nodes.txt`, `map/railways.txt`.
-Strategy for the first playable milestone: replace_path the affected folders with minimal generic content (every country gets capital + no focus tree + no events) and re-introduce content in a later milestone (outside the map build; see docs/PROJECT_SPEC.md §9). Grep patterns for the audit: `\bstate\s*=\s*\d+`, `\b\d+\s*=\s*\{` inside `every_state`/`state` scopes, `capital\s*=\s*\d+`, `location\s*=\s*\d+`, `province\s*=\s*\d+`.
+Project strategy (owner decision: vanilla focus trees must keep working): **do not strip** — keep vanilla state IDs by anchoring them to the new state containing each vanilla state's main VP city, give new states higher IDs, and remap every vanilla reference at build time (effects on a split vanilla state → all child states; triggers → anchor or all children). Details: docs/PROJECT_SPEC.md §10 and the compat-engineer agent. Stubbing with `replace_path` is only a fallback for content the coverage report marks unmappable. Grep patterns for the audit: `\bstate\s*=\s*\d+`, `\b\d+\s*=\s*\{` inside `every_state`/`state` scopes, `capital\s*=\s*\d+`, `location\s*=\s*\d+`, `province\s*=\s*\d+`.
 
 ## 5. Licence hygiene
 Do not commit vanilla assets (bitmaps, DDS, vanilla text). Generated data derived from public-domain/open datasets may be committed with attribution in `data/README.md`. Check each dataset's licence before use and record it (Natural Earth is public domain; GADM restricts commercial use; verify CShapes, HYDE, HydroSHEDS and every other source at download time).

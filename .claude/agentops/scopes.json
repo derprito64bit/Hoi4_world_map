@@ -1,0 +1,59 @@
+{
+  "_comment": "Write scopes enforced by scope_guard.py on Write/Edit/NotebookEdit. Globs are repo-relative; ** crosses directories, * does not. Bash-created files are checked at merge time by wu_check.py.",
+  "hard_deny_all": [
+    "mod/**"
+  ],
+  "hard_deny_subagents": [
+    ".claude/**",
+    "CLAUDE.md",
+    "docs/PROJECT_SPEC.md",
+    "docs/prompts/**"
+  ],
+  "agents": {
+    "overwatch": [
+      "docs/logs/**",
+      "docs/board/**",
+      "docs/OPEN_QUESTIONS.md",
+      "to-check/**"
+    ],
+    "researcher": [
+      "data/research/**"
+    ],
+    "state-builder": [
+      "data/states/**",
+      "data/provenance/**",
+      "data/research/**",
+      "data/countries/**"
+    ],
+    "pipeline-engineer": [
+      "tools/**",
+      "tests/**",
+      "requirements.txt",
+      "data/README.md",
+      "data/manifest.csv",
+      ".gitignore"
+    ],
+    "compat-engineer": [
+      "tools/compat/**",
+      "tests/compat/**",
+      "data/compat/**"
+    ],
+    "code-reviewer": [
+      "docs/reviews/**"
+    ],
+    "history-auditor": [
+      "docs/audits/**"
+    ],
+    "validator": [
+      "build/**"
+    ],
+    "triage": [
+      "docs/board/triage/**"
+    ]
+  },
+  "agent_exceptions": {
+    "overwatch": [
+      ".claude/settings.local.json"
+    ]
+  }
+}

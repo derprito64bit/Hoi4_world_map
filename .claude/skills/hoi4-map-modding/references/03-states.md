@@ -37,7 +37,8 @@ Category thresholds (starting point; tune with the vanilla distribution: rural 2
 - **Tier 1**: the start-date administrative boundary from an authoritative historical GIS (national historical GIS projects, MPIDR Population History GIS for Europe, Newberry Atlas of Historical County Boundaries for the US, CShapes 2.0 for sovereign borders), or official gazetteers/statutes defining the unit.
 - **Tier 2**: modern admin-1/admin-2 boundaries (GADM, Natural Earth admin-1, geoBoundaries) **only where Tier 1 confirms the unit did not change** between the start date and today.
 - **Tier 3**: historical atlases (scanned maps), encyclopaedic articles describing the unit.
-- **Tier 4**: other mods' maps, wikis, forum posts — leads only, never adopted as a boundary.
+- **Tier 4**: wikis, forum posts — leads only, never adopted as a boundary.
+- **Excluded**: other mods' maps (explicitly Kovas' States Rework) and vanilla HOI4 state shapes — not even as leads for geometry.
 Rule: a Tier 4 lead may tell you *where to look*; the committed geometry must cite Tier 1–3.
 
 ### 3.2 Choosing which unit becomes a state
@@ -47,6 +48,9 @@ Rule: a Tier 4 lead may tell you *where to look*; the committed geometry must ci
 4. Colonies/protectorates follow the colonial administrative divisions of the start date.
 5. Keep the 1936 sovereign border as a state border everywhere, including disputed areas (put disputed area in its own state so either side can own it).
 6. Record every split/merge in `data/provenance/states.csv` (schema below).
+
+### 3.2b Alternate-date border overlay
+For 1914-07-28, 1918-11-11 (+ 1920–1923 treaty settlements) and 1939-08-14, record the sovereign and first-level borders that differ from 1936 as lines in `<ISO3>_overlay.geojson` (same evidence rules). They do not create states; P05 forces province borders along them so later bookmarks and alt-history can assign provinces cleanly.
 
 ### 3.3 Geometry pipeline
 1. Load the boundary polygons (Tier 1–2) → reproject lon/lat to the canvas (`ee_project.Canvas.to_pixel`).

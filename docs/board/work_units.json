@@ -1,0 +1,29 @@
+{
+  "_schema": "see docs/AGENT_SYSTEM.md §4",
+  "work_units": [
+    {
+      "id": "P00",
+      "phase": "P00",
+      "title": "Inspect 1.19.x install, measure limits from installed map mods, confirm parameters",
+      "agent": "overwatch",
+      "scope": ["docs/logs/P00.md", "docs/OPEN_QUESTIONS.md", "to-check/**"],
+      "depends_on": [],
+      "status": "todo",
+      "branch": "wu/P00",
+      "attempts": 0,
+      "notes": ""
+    },
+    {
+      "id": "P00b",
+      "phase": "P00",
+      "title": "Build the in-game experiment kit (EXP-01..EXP-07 test mods) for the owner",
+      "agent": "pipeline-engineer",
+      "scope": ["tools/experiments/**", "tests/experiments/**"],
+      "depends_on": ["P00"],
+      "status": "todo",
+      "branch": "wu/P00b",
+      "attempts": 0,
+      "notes": ""
+    }
+  ]
+}

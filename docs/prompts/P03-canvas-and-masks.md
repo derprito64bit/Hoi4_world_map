@@ -1,5 +1,7 @@
 # TASK P03: Canvas, land/sea/lake/off-globe masks and draft heightmap
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Generate the base rasters every later phase builds on, in the Equal Earth canvas: `build/masks/surface.npy` (uint8: 0 off-globe, 1 sea, 2 land, 3 lake), a preview PNG, and a draft `mod/map/heightmap.bmp` whose water/land split matches the mask pixel-for-pixel.
 

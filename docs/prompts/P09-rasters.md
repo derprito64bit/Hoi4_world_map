@@ -1,5 +1,7 @@
 # TASK P09: Raster layers — terrain, rivers, final heightmap, normal map, trees, cities, colormaps
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Generate `terrain.bmp`, `rivers.bmp`, final `heightmap.bmp`, `world_normal.bmp`, `trees.bmp`, `cities.bmp` and the `map/terrain/*.dds` colour maps for the canvas; then regenerate the `terrain` column of `definition.csv` from `terrain.bmp` — all from scripted sources, matching vanilla palettes and formats.
 

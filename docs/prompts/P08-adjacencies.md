@@ -1,5 +1,7 @@
 # TASK P08: Adjacencies — straits, canals, impassable borders, seam links, rules
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Produce `mod/map/adjacencies.csv` and `mod/map/adjacency_rules.txt` that give every historically crossable strait, every 1936 canal (Suez, Panama, Kiel, Corinth — others only with evidence), impassable borders across real barriers, and Pacific wrap-seam links, with localisation for each rule.
 

@@ -33,7 +33,9 @@ cited boundary source) and whose gameplay density is deliberate, not accidental.
 
 Scripts (run from the repo root; need `numpy pillow`):
 - `scripts/validate_map.py <mod_root> [--vanilla <game_root>] [--json out.json]` — offline invariant checker. Vanilla 1.14.1 baseline: **9 ERROR** (all `STATE_VP_OUTSIDE`, vanilla data bugs), 4 WARN.
-- `scripts/ee_project.py selftest|info|point|mask` — Equal Earth ↔ pixel canvas (verified against PROJ to 1e-6).
+- `scripts/ee_project.py selftest|info|point|mask` — Equal Earth ↔ pixel canvas (verified against PROJ to 1e-6). Project defaults: 4608×2048, lon0 10.9, 60° S..90° N.
+
+Target game version is **1.19.x**; the vanilla numbers in `references/08-vanilla-baseline.md` are from 1.14.1 and must be re-measured before use as calibration. Agents working in this repo are defined in `.claude/agents/` (see `docs/AGENT_SYSTEM.md`).
 
 ## 3. Hard invariants (never violate; the validator enforces most)
 
@@ -52,6 +54,8 @@ Scripts (run from the repo root; need `numpy pillow`):
 13. Never commit Paradox game files (vanilla bitmaps, vanilla text) to this repo. Reference them from a local install path.
 
 ## 4. Decision rules (If → Then)
+
+- Never use another mod (explicitly Kovas' States Rework) or vanilla HOI4 shapes as a source for geometry, names or attributes.
 
 - If a source boundary and a gameplay wish conflict → keep the source boundary for states; express gameplay through province density, state category, VPs — never by moving a documented border.
 - If two boundary sources disagree → record both in the state's provenance entry and choose the higher tier (09-sources.md); if same tier, mark `UNRESOLVED` and pick the one matching the start date.

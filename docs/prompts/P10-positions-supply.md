@@ -1,5 +1,7 @@
 # TASK P10: Positions (buildings, unitstacks, airports, rocketsites, weather) and supply (nodes, railways)
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Generate every position file the engine needs so that nothing is missing at load and building/unit models appear in sensible places, and create the start-date supply network (`supply_nodes.txt`, `railways.txt`) from historical sources.
 

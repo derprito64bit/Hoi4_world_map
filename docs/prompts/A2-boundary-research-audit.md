@@ -1,5 +1,7 @@
 # RESEARCH AUDIT A2: {{UNIT}} boundary at {{START_DATE}}
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Determine the boundary (and, if asked, the name, administering power and seat) of **{{UNIT}}** on {{START_DATE}}, with primary evidence, to resolve `{{OPEN_QUESTION_ID}}` in `docs/OPEN_QUESTIONS.md`. Output a decision and, if resolvable, a geometry file — no changes to map data.
 

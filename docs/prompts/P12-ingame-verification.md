@@ -1,5 +1,7 @@
 # TASK P12: In-game verification loop (owner runs the game; agent fixes)
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Reach Gate G6: the game in debug mode loads the mod with 0 map errors, every bookmark starts, 30 in-game days run without crash — by triaging the owner's `error.log`/`game.log` into fixes in the right phase's generator.
 

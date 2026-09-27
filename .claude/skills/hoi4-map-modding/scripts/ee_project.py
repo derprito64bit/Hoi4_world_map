@@ -8,14 +8,16 @@ Canvas convention (matches how the game reads BMPs after decoding):
   * pixel (col, row) with row 0 = TOP (north) of the image, as numpy/PIL see it;
   * the game's own z coordinate in buildings.txt / unitstacks.txt counts from the
     BOTTOM, so  z = H - row  (see to_game_xz()).
+  * Latitudes outside [lat_min, lat_max] are cropped (project default: 60°S, like vanilla).
   * The canvas is fitted so the projected equator spans the full width exactly:
     the left and right image edges are both the cut meridian (lon_0 +/- 180),
     which lets the game's horizontal wrap join them at the equator.
 
 CLI:
-  python3 ee_project.py info  --width 5120 --height 2560 --lon0 10.9
-  python3 ee_project.py mask  --width 5120 --height 2560 --lon0 10.9 --out globe_mask.png
-  python3 ee_project.py point --width 5120 --height 2560 --lon0 10.9 --lon 13.4 --lat 52.5
+  python3 ee_project.py info                      # project defaults: 4608x2048, lon0 10.9, 60°S..90°N
+  python3 ee_project.py info  --width 5120 --height 2560 --lat-min -90   # full globe variant
+  python3 ee_project.py mask  --out globe_mask.png
+  python3 ee_project.py point --lon 13.4 --lat 52.5
   python3 ee_project.py selftest
 """
 import argparse
@@ -76,24 +78,27 @@ class Canvas:
     remaining rows (top and bottom) are off-globe margin.
     """
 
-    def __init__(self, width, height, lon0=0.0):
+    def __init__(self, width, height, lon0=0.0, lat_min=-90.0, lat_max=90.0):
         self.W, self.H, self.lon0 = int(width), int(height), float(lon0)
+        self.lat_min, self.lat_max = float(lat_min), float(lat_max)
         self.scale = self.W / (2 * X_MAX)
-        self.globe_h = 2 * Y_MAX * self.scale
-        if self.globe_h > self.H:
-            raise ValueError(f"height {self.H} too small: the outline needs {self.globe_h:.1f} rows at width {self.W}")
+        self.y_top = float(forward(0.0, self.lat_max)[1])
+        self.y_bot = float(forward(0.0, self.lat_min)[1])
+        self.globe_h = (self.y_top - self.y_bot) * self.scale
+        if self.globe_h > self.H + 1e-6:
+            raise ValueError(f"height {self.H} too small: latitudes {self.lat_min}..{self.lat_max} need {self.globe_h:.1f} rows at width {self.W}")
         self.margin = (self.H - self.globe_h) / 2
 
     # --- lon/lat <-> pixel (float, pixel centres at .5)
     def to_pixel(self, lon, lat):
         x, y = forward(lon, lat, self.lon0)
         col = (x + X_MAX) * self.scale
-        row = self.margin + (Y_MAX - y) * self.scale
+        row = self.margin + (self.y_top - y) * self.scale
         return col, row
 
     def to_lonlat(self, col, row):
         x = np.asarray(col, dtype=float) / self.scale - X_MAX
-        y = Y_MAX - (np.asarray(row, dtype=float) - self.margin) / self.scale
+        y = self.y_top - (np.asarray(row, dtype=float) - self.margin) / self.scale
         return inverse(x, y, self.lon0)
 
     def to_game_xz(self, lon, lat):
@@ -102,11 +107,11 @@ class Canvas:
         return col, self.H - row
 
     def globe_mask(self):
-        """bool[H, W]: True where the pixel centre lies on the globe."""
+        """bool[H, W]: True where the pixel centre lies on the globe inside the latitude window."""
         rows, cols = np.mgrid[0:self.H, 0:self.W] + 0.5
         lon, _ = self.to_lonlat(cols, rows)
-        y = Y_MAX - (rows - self.margin) / self.scale
-        return ~np.isnan(lon) & (np.abs(y) <= Y_MAX)
+        y = self.y_top - (rows - self.margin) / self.scale
+        return ~np.isnan(lon) & (y <= self.y_top) & (y >= self.y_bot)
 
     def km2_per_px(self):
         return EARTH_AREA_KM2 / (4 * np.pi * self.scale ** 2)
@@ -132,14 +137,22 @@ def selftest():
     area_px = m.sum()
     expect = 4 * np.pi * c.scale ** 2
     assert abs(area_px - expect) / expect < 1e-3, (area_px, expect)
-    print(f"selftest ok: forward matches PROJ, inverse round-trips, mask area {area_px} px ~ {expect:.0f}")
+    # cropped canvas (project default): 60°S crop fits 4608 x 2048 exactly
+    c = Canvas(4608, 2048, 10.9, lat_min=-60.0)
+    col, row = c.to_pixel(10.9, -60.0)
+    assert abs(row - (c.margin + c.globe_h)) < 1e-6
+    lo, la = c.to_lonlat(*c.to_pixel(13.4, 52.5))
+    assert abs(lo - 13.4) < 1e-6 and abs(la - 52.5) < 1e-6
+    print(f"selftest ok: forward matches PROJ, inverse round-trips, mask area {area_px} px ~ {expect:.0f}, crop ok")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["info", "mask", "point", "selftest"])
-    ap.add_argument("--width", type=int, default=5120)
-    ap.add_argument("--height", type=int, default=2560)
+    ap.add_argument("--width", type=int, default=4608)
+    ap.add_argument("--height", type=int, default=2048)
+    ap.add_argument("--lat-min", type=float, default=-60.0)
+    ap.add_argument("--lat-max", type=float, default=90.0)
     ap.add_argument("--lon0", type=float, default=10.9)
     ap.add_argument("--lon", type=float)
     ap.add_argument("--lat", type=float)
@@ -147,10 +160,10 @@ def main():
     a = ap.parse_args()
     if a.cmd == "selftest":
         selftest(); return 0
-    c = Canvas(a.width, a.height, a.lon0)
+    c = Canvas(a.width, a.height, a.lon0, a.lat_min, a.lat_max)
     if a.cmd == "info":
         print(f"canvas {c.W}x{c.H} area {c.W*c.H}  lon0={c.lon0}  cut meridian={wrap_lon(c.lon0 + 180, 0):.3f}")
-        print(f"scale {c.scale:.3f} px/rad  globe height {c.globe_h:.1f} rows  margin {c.margin:.1f} rows top & bottom")
+        print(f"latitudes {c.lat_min}..{c.lat_max}  scale {c.scale:.3f} px/rad  globe height {c.globe_h:.1f} rows  margin {c.margin:.1f} rows top & bottom")
         print(f"{c.km2_per_px():.2f} km2 per pixel  (~{np.sqrt(c.km2_per_px()):.2f} km per pixel side)")
         print(f"equator: {c.W / 360:.3f} px per degree of longitude")
     elif a.cmd == "point":

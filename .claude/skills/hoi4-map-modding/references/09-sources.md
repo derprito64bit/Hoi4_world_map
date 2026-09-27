@@ -7,7 +7,8 @@
 | 1* | Public mirror of vanilla text/map files: `github.com/cbrzeczysz/hoi4-history` (commit "1.14.1 - Bolivar", 2024-03-07) — measured for 08-vanilla-baseline.md | same as Tier 1 **for 1.14.1**; re-verify on newer versions |
 | 2 | CWTools HOI4 rules `github.com/cwtools/cwtools-hoi4-config` (`Config/history/states.cwt`, `Config/map/regions.cwt`, `Config/map/map_consolidated.cwt`) | field names, cardinalities, value ranges |
 | 3 | Paradox wiki (Map modding, State modding, Nudger, Strategic region modding, Supply areas) — only via search snippets in this environment | limits and error texts marked [C] |
-| 4 | Forums, Steam guides, YouTube, other mods, tool READMEs (HOI4 Province Editor, MapGen, hoi4-mod-maker) | leads only |
+| 4 | Forums, Steam guides, YouTube, MapChart, tool READMEs (HOI4 Province Editor, MapGen, hoi4-mod-maker) | leads only |
+| — | **Other mods** (Kovas' States Rework, Darkest Hour, …) | never a source for geometry, names or attributes; installed map mods may be measured for engine limits only (map size, province count) |
 Rule: Tier 3–4 claims stay marked [C] until an in-game test (Tier 1) confirms them; record confirmations in `docs/OPEN_QUESTIONS.md`.
 
 ## 2. Geographic data sources (for agents building the map — verify licence and reachability before use)
@@ -27,6 +28,7 @@ Rule: Tier 3–4 claims stay marked [C] until an in-game test (Tier 1) confirms 
 Network note: in this cloud environment `hoi4.paradoxwikis.com`, Steam, Reddit and most sites are blocked; GitHub raw files, GitLab, PyPI and npm are reachable. The owner can widen the environment's network policy if a phase needs another host.
 
 ## 3. Open questions (UNRESOLVED — each needs the listed test before it becomes a rule)
+The owner-facing versions of these tests are EXP-01..07 in `to-check/2026-09-27_decisions-and-checks.md` (OPEN-1 = EXP-01, OPEN-2 = EXP-03, OPEN-3 = EXP-06, OPEN-4 = EXP-02, OPEN-7 = EXP-05).
 | ID | Question | Current handling | Test |
 |---|---|---|---|
 | OPEN-1 | Can adjacencies.csv link two sea provinces **without** a land `Through` (wrap-seam Pacific links)? | plan: try `sea` type with sea Through, then empty type | in-game: move a fleet across the seam at 40°N; check naval supply pathing |
@@ -34,7 +36,8 @@ Network note: in this cloud environment `hoi4.paradoxwikis.com`, Steam, Reddit a
 | OPEN-3 | Off-globe fill as lake provinces — any rendering/pathing side effects? | lakes in "off-globe" regions | load, pan the map edges, check AI naval pathing and error.log |
 | OPEN-4 | Exact "TOO LARGE BOX" threshold | land ≤ 250 px, sea ≤ 180 px bbox | binary search with a test province |
 | OPEN-5 | Is W×H ≤ 13,238,272 a hard limit or memory-dependent? | stay ≤ 13,107,200 | only relevant if a larger canvas is proposed |
-| OPEN-6 | Game version to target (1.14.1 measured; current release may be newer) | re-measure with the user's install at P00 | diff installed map/common/history formats against 08-vanilla-baseline.md |
+| OPEN-6 | Target is 1.19.x (owner); baseline measured on 1.14.1 | re-measure at P00 (CHK-003) | diff installed map/common/history formats against 08-vanilla-baseline.md |
+| OPEN-8 | Are gaps in state IDs tolerated? (vanilla-ID anchoring may need it) | validator treats gaps as ERROR | EXP-07 |
 | OPEN-7 | trees.bmp aspect — must it match the map aspect? | scale to 2:1 | visual check |
 
 ## 4. Measurement provenance

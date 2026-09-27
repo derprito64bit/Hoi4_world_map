@@ -1,5 +1,7 @@
 # TASK P05: Generate provinces.bmp and definition.csv
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Generate every province of the map — land (inside state polygons), sea, lake and off-globe filler — as `mod/map/provinces.bmp` + `mod/map/definition.csv` + `mod/map/continent.txt`, plus `build/pid.npy` (province-id raster) and `build/state_raster.npy`, such that the validator reports 0 ERROR for all bitmap/definition checks and the total count is within `PROVINCE_BUDGET`.
 

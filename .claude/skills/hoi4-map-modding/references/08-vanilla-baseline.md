@@ -1,5 +1,7 @@
 # 08 — Vanilla baseline (measured, HOI4 1.14.1 "Bolivar", map files from a public text mirror)
 
+> **Version warning:** the project targets **1.19.x**. MapChart (Tier 4) reports 1.17 at 1,046 states / 10,113 provinces and 1.19 at ≈ 1,081 states / ≈ 10,150 provinces (new states in SE Asia, China, the Pacific, Australia/NZ). Formats are expected to be unchanged, but every number below must be re-measured on the owner's 1.19 install in P00 (CHK-003) before being used as a calibration target.
+
 Use these as calibration targets and sanity ranges, not as rules. Re-measure if the installed game version differs.
 
 ## Canvas

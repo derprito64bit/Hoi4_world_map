@@ -1,5 +1,7 @@
 # TASK P01: Repository scaffolding and build tooling
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Create the directory layout, a single build runner, shared Python helpers and the provenance checker so every later phase adds generators to one reproducible pipeline and can prove its output with deterministic commands.
 

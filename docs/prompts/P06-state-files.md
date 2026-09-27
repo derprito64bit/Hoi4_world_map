@@ -1,5 +1,7 @@
 # TASK P06: Write history/states files (ownership, category, manpower, VPs, buildings, resources)
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Emit one `mod/history/states/<id>-<Name>.txt` per state polygon with correct start-date owner/cores, population-based manpower, derived state_category, VPs in the true city province, infrastructure/building levels and resources — plus `state_names_l_english.yml` and `victory_points_l_english.yml` — so that all `STATE_*` validator checks pass and every state has a complete provenance row.
 

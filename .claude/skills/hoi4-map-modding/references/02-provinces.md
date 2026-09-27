@@ -23,22 +23,21 @@
 See 08-vanilla-baseline.md for the full table.
 
 ## 4. Density model for the Equal Earth map (this project)
-Equal Earth at 5120×2560 gives **45.37 km² per pixel everywhere** (equal-area). Land ≈ 3.23 M px incl. Antarctica (0.27 M px).
-Because Equal Earth does not inflate high latitudes, Europe gets far fewer pixels than in vanilla, so density must be set by an explicit **importance weight**, not by pixel area.
+Equal Earth at the project canvas (4608×2048, 60° S crop) gives **56.02 km² per pixel everywhere** (equal-area); land ≈ 2.40 M px.
+Because Equal Earth does not inflate high latitudes, Europe gets far fewer pixels than in vanilla, so density is set by an explicit **importance weight**, not by pixel area — and **historical border lines override density**.
 
 Target province area (px) for a land cell:
 ```
 A_target = clamp( A_base / w , A_min , A_max )
-A_base = 220 px     (~10,000 km²)
-A_min  = 40 px      (5× the 8-px floor, keeps shapes drawable)
-A_max  = 1,600 px   (and bbox side ≤ 250 px)
-w      = importance weight, 0.15 .. 5.5, from the region table in docs/PROJECT_SPEC.md
-         (inputs: 1936 population density, historical theatre importance, terrain passability)
+A_base, w  = docs/PROJECT_SPEC.md §3 (single source of truth; currently A_base = 160)
+A_min      = 24 px (≈ 1,350 km²; 3× the 8-px floor)
+A_max      = 1,600 px and bbox side ≤ BBOX_MAX
 ```
-Sea provinces: `A_target_sea = 1,200–3,000 px` near coasts / in historical naval theatres, up to the bbox limit in open ocean. Check the resulting count against the budget before generating.
+Border rule: every line of the border overlay (1914 / 1918–1923 / 1936 / 1939, 03-states.md §3.2b) must coincide with province borders; provinces are split along overlay lines even if that makes them smaller than A_target (never below 8 px — merge slivers across the *other* side of the overlay line instead, and log it).
+Sea provinces: `A_target_sea = 900–2,500 px` near coasts / in naval theatres, larger in open ocean up to the bbox limit; ring historically important small islands with their own sea provinces so they are identifiable (owner decision DEC-009).
 
-Budget check (must be done before generation, recorded in the phase log):
-`Σ land_area_px(region) / A_target(region) + sea estimate ≤ 16,000`.
+Budget check (before generating, recorded in the phase log):
+`density count + overlay splits + sea + lakes + off-globe ≤ PROVINCE_BUDGET` (confirmed by EXP-03).
 
 ## 5. Generation algorithm (deterministic, scripted)
 1. **Land mask** from coastline polygons rasterised at the canvas (06-equal-earth.md). Resolve 1-px peninsulas/isthmuses: morphological open/close with a 3×3 kernel, then re-add true isthmuses (Panama, Suez, Kra, Corinth) by hand-listed polygons.
@@ -46,7 +45,7 @@ Budget check (must be done before generation, recorded in the phase log):
 3. **Seeds**: Poisson-disk sample each state polygon with radius `r = sqrt(A_target / π) * 1.8`; always seed: every VP city, every port city, every capital.
 4. **Grow**: weighted Voronoi / multi-source Dijkstra on the pixel grid where crossing a high-slope or river pixel costs more (so borders follow ridges and rivers). Use 4-connectivity.
 5. **Clean**: (a) merge components < A_min into the neighbour with the longest shared border in the same state; (b) remove X-crossings by reassigning one of the four corner pixels to the diagonal neighbour that minimises perimeter; repeat until 0; (c) ensure each province is 4-connected except deliberate island groups; (d) re-check the 8-px minimum.
-6. **Islands**: an island < 8 px at canvas scale → if it is historically significant (a VP, a naval base, a strait endpoint: Malta, Iwo Jima, Midway, Wake…) enlarge it to a compact ≥ 12-px blob centred on its true position and log it in `data/provenance/island_adjustments.csv`; otherwise drop it into the surrounding sea.
+6. **Islands** (owner decision DEC-009: include them, enlarge only very slightly): an island < 8 px at canvas scale that is inhabited in 1936, named in a sovereignty/colonial list, or militarily significant (Malta, Iwo Jima, Midway, Wake, Pitcairn, Tristan da Cunha…) becomes the **smallest compact blob of 8–10 px** centred on its true position, logged in `data/provenance/island_adjustments.csv` (true area, drawn area); uninhabited rocks without significance are dropped into the surrounding sea (logged too).
 7. **Seas**: generate sea provinces with the same algorithm on the sea mask, seeded more densely within 3 px-rings of coasts and around straits; every coastal land province must touch at least one sea province that is not shared with more than ~6 other coastal provinces (ports need a clear sea tile).
 8. **Lakes**: lakes ≥ 12 px from the lake dataset become `lake` provinces (impassable). Smaller lakes are dropped (land).
 9. **Colours**: assign colours deterministically (e.g. hash of province id → RGB, rejecting duplicates and `0,0,0`); store the mapping in definition.csv only.

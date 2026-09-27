@@ -1,5 +1,7 @@
 # TASK P02: Acquire geographic source data with a verifiable manifest
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Download (or document how the owner downloads) every dataset the map needs into `data/raw/`, and commit a manifest `data/manifest.csv` recording source, version, URL, licence, checksum, CRS and the phases that use it — so any later claim can be traced to an exact file.
 

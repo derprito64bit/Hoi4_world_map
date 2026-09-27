@@ -1,5 +1,7 @@
 # TASK P04: Start-date state geometry for {{CONTINENT}} with provenance
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 Run once per continent (`europe`, `north_america`, `south_america`, `australia` (Oceania), `africa`, `asia`, `middle_east`, `antarctica`), each in its own git worktree/branch; outputs are disjoint files.
 
 ## 1. OBJECTIVE

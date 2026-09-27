@@ -1,5 +1,7 @@
 # TASK P11: Packaging, vanilla-breakage stubs, localisation completeness
 
+> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+
 ## 1. OBJECTIVE
 Make `mod/` a loadable mod: a correct `descriptor.mod` with `replace_path`s, minimal country/unit history consistent with the new states, stubs that neutralise vanilla content referencing old state/province IDs, and complete localisation — verified by the validator and a static reference scan.
 

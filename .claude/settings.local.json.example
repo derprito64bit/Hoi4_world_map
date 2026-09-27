@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy to .claude/settings.local.json (gitignored) on each machine and fix the paths.",
+  "env": {
+    "HOI4_GAME_DIR": "E:/SteamLibrary/steamapps/common/Hearts of Iron IV",
+    "HOI4_USER_DIR": "C:/Users/<you>/Documents/Paradox Interactive/Hearts of Iron IV",
+    "HOI4_WORKSHOP_DIR": "E:/SteamLibrary/steamapps/workshop/content/394360"
+  }
+}
