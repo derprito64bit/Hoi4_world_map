@@ -284,6 +284,21 @@ def test_weather_parse_and_icy():
     assert not winter_icy("strategic_region={ id=1 provinces={ 1 } }")
 
 
+def test_weather_both_and_snow_donor():
+    from experiments.exp08 import weather_block
+    from experiments.weather import parse_periods, winter_icy, with_snow_of
+    sea = weather_block(region_with(-20.0, 1.0))                 # arctic water, no snow
+    land = region_with(-30.0, 0.0, snow=0.6)                     # snow, no arctic water
+    assert winter_icy(sea) and not winter_icy(sea, both=True)
+    merged = with_snow_of(sea, land)
+    p = parse_periods(merged)
+    assert len(p) == 12 and all(x["snow"] == 0.6 and x["arctic_water"] == 1.0 and x["tmin"] == -20.0 for x in p)
+    assert winter_icy(merged, both=True)
+    assert merged.replace("snow=0.600", "snow=0.000") == sea     # only the snow weights changed
+    with pytest.raises(ValueError):
+        with_snow_of(sea, region_with(-30.0, 0.0, snow=0.6, months=1))
+
+
 def test_exp09_shot6_helpers():
     from experiments.exp09 import not_icy, shot6_water
     pid = np.array([[1, 1, 2, 2], [1, 3, 3, 2], [4, 4, 4, 4]], dtype=np.int32)
@@ -292,6 +307,10 @@ def test_exp09_shot6_helpers():
     assert shot6_water(pid, types, [(1, 2)], radius=1) == [1, 2, 4]
     icy, warm = region_with(-20.0, 1.0), region_with(5.0, 0.0)
     assert not_icy([1, 2, 4], lambda i: icy if i != 4 else warm) == [4]
+    # filler lakes need snow AND arctic water: arctic-only weather passes for sea 1 but not for lake 2
+    assert not_icy([1, 2], lambda i: icy, lakes={2}) == [2]
+    both = region_with(-20.0, 1.0, snow=0.5)
+    assert not_icy([1, 2], lambda i: both, lakes={2}) == []
 
 
 def test_exp06_drop_naval_terrain():

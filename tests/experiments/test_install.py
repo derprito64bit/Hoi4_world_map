@@ -79,9 +79,12 @@ def test_refuses_a_dir_that_is_not_a_hoi4_user_dir(setup, tmp_path):
     other = tmp_path / "not-hoi4"
     other.mkdir()
     (other / "readme.txt").write_text("x", encoding="utf-8")
+    (other / "mod").mkdir()                       # a bare mod/ folder is not enough
     with pytest.raises(KitError):
-        inst.install("EXP-01-UK-A", other, build_root=build)
-    assert sorted(p.name for p in other.iterdir()) == ["readme.txt"]
+        inst.install("EXP-01A", other, build_root=build)
+    assert sorted(p.name for p in other.rglob("*")) == ["mod", "readme.txt"]
+    (other / "settings.txt").write_text("x", encoding="utf-8")   # a marker file the game writes: accepted
+    assert inst.install("EXP-01A", other, build_root=build) == other / "mod" / "p00b_EXP-01A.mod"
 
 
 def test_refuses_unbuilt(setup):

@@ -1,5 +1,7 @@
 """Builds against the real game install (skipped without it): --check passes on a fresh build and
 fails when anything beyond the intended property is touched."""
+import re
+
 import pytest
 
 from experiments.build import build_into
@@ -142,14 +144,28 @@ def test_exp09_check_catches_a_different_base_file(ctx, exp09_builds):
         p.write_bytes(orig)
 
 
-def test_exp09_check_catches_warm_weather_at_the_ice_landmarks(ctx, exp09_builds):
+def _warm(b):
+    return b.replace(b"arctic_water=1.000", b"arctic_water=0.000").replace(b"temperature={ -20.0", b"temperature={ 5.0")
+
+
+def _no_snow(b):
+    return re.sub(rb"(?<![\w])snow=[\d.]+", b"snow=0.000", b)
+
+
+def _no_arctic(b):
+    return b.replace(b"arctic_water=1.000", b"arctic_water=0.000")
+
+
+@pytest.mark.parametrize("spoil", [_warm, _no_snow, _no_arctic], ids=["warm", "no-snow", "no-arctic-water"])
+def test_exp09_check_catches_filler_without_snow_and_arctic_water(ctx, exp09_builds, spoil):
+    """The northern filler must have winter snow AND arctic water; losing either one fails --check."""
     e, outs = exp09_builds
     bid, out = list(outs.items())[0]
     p = next((out / "map" / "strategicregions").glob("*off-globe NE.txt"))
     orig = p.read_bytes()
+    assert re.search(rb"(?<![\w])snow=0\.[1-9]", orig) and b"arctic_water=1.000" in orig
     try:
-        p.write_bytes(orig.replace(b"arctic_water=1.000", b"arctic_water=0.000").replace(b"temperature={ -20.0",
-                                                                                       b"temperature={ 5.0"))
+        p.write_bytes(spoil(orig))
         assert any("icy winter weather" in x for x in e.check(ctx, bid, out))
     finally:
         p.write_bytes(orig)

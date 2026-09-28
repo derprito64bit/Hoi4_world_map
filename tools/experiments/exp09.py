@@ -30,7 +30,7 @@ from .mapdata import (LAKE, LAND, SEA, Definition, block_ids, coast_points, coas
 from .patchspec import BASELINE_ONLY, load_manifest, patched_files
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, split_lines
 from .synth import Params, layout
-from .weather import winter_icy
+from .weather import winter_icy, with_snow_of
 
 W, H = 5120, 2304
 LON0, LAT_MIN, LAT_MAX = 10.9, -60.0, 90.0
@@ -39,11 +39,14 @@ T_LAND, T_WATER = 0, 15
 R_LAND, R_WATER = 255, 254
 CITIES = 15
 COLOR_SEED = 90009
-# Weather for the new regions. North of NORTH_LAT (new seas) and the northern off-globe filler: vanilla
-# "88-Bering Sea" (every month -20..0 C, arctic_water 1.0 - the only vanilla sea region that is icy all winter).
+# Weather for the new regions. North of NORTH_LAT (new seas): vanilla "88-Bering Sea" (every month -20..0 C,
+# arctic_water 1.0; one of the vanilla sea regions that are icy all winter, like 46-Barents Sea).
+# Northern off-globe filler (lake provinces): the Bering Sea months with the snow weight of vanilla
+# "222-Northern Canada" (a cold land region that holds vanilla lakes, Jan-Mar snow 0.6/0.6/0.3), so the filler
+# has BOTH snow and arctic water in winter - whichever of the two drives ice on lakes, it is there.
 # South: vanilla "32-Southern Ocean" (2 C all year, the coldest southern sea region; vanilla has no icy southern
 # sea, and the vanilla shader draws ice only in the top 26 % of the map anyway).
-WEATHER_NORTH, WEATHER_SOUTH = "88-", "32-"
+WEATHER_NORTH, WEATHER_SOUTH, SNOW_DONOR = "88-", "32-", "222-"
 NORTH_LAT = 50.0
 SHOT6_RADIUS = 40                       # px around the Chukotka / Alaska landmarks that screenshot 6 looks at
 SHOT6_STATES = (822, 463)               # Chukotka (Cape Dezhnev), Alaska (Cape Prince of Wales)
@@ -76,9 +79,10 @@ def shot6_water(pid: np.ndarray, types: np.ndarray, points, radius: int = SHOT6_
     return sorted(out)
 
 
-def not_icy(ids, region_text_of) -> list:
-    """IDs whose strategic region is not below 0 C with snow/arctic water in Jan-Mar."""
-    return [i for i in ids if not winter_icy(region_text_of(i))]
+def not_icy(ids, region_text_of, lakes=frozenset()) -> list:
+    """IDs whose strategic region is not below 0 C with snow or arctic water in Jan-Mar; IDs in ``lakes``
+    (the off-globe filler) need snow AND arctic water."""
+    return [i for i in ids if not winter_icy(region_text_of(i), both=i in lakes)]
 
 
 def region_texts(v, files: dict):
@@ -230,7 +234,7 @@ class Exp09(Experiment):
         files.update(self.new_regions(v, pid, lay, types))
         # screenshot 6 compares ice on both sides of the outline: all water there must have icy winter weather
         pts = [lay.anchors[s] for s in SHOT6_STATES]
-        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, files))
+        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, files), set(lay.off_ids))
         if bad:
             raise KitError(f"EXP-09: water near the screenshot-6 landmarks has no icy winter weather: {bad[:10]}")
         centre = interior_points(pid)
@@ -262,6 +266,12 @@ class Exp09(Experiment):
             out[key] = weather_block(v.region_files[name])
         if not winter_icy(out["north"]):
             raise KitError(f"{WEATHER_NORTH}* is not below 0 C with snow/arctic water in Jan-Mar in this game version")
+        donor = next((f for f in sorted(v.region_files) if f.startswith(SNOW_DONOR)), None)
+        if donor is None:
+            raise KitError(f"vanilla region {SNOW_DONOR}* not found")
+        out["filler_north"] = with_snow_of(out["north"], v.region_files[donor])
+        if not winter_icy(out["filler_north"], both=True):
+            raise KitError("northern filler weather lacks winter snow AND arctic water in Jan-Mar")
         return out
 
     def new_regions(self, v, pid, lay, types) -> dict:
@@ -293,7 +303,7 @@ class Exp09(Experiment):
             if not quads[q]:
                 continue
             name = f"EXP-09 off-globe {q}"
-            side = "north" if q[0] == "N" else "south"
+            side = "filler_north" if q[0] == "N" else "south"
             body = region_file(rid, name, quads[q], wx[side], "none").replace("\tnaval_terrain=none\n", "")
             files[f"map/strategicregions/{rid}-{name}.txt"] = encode(body)
             loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
@@ -457,10 +467,13 @@ class Exp09(Experiment):
             "Screenshot 5: as far south as it goes over the Cape Horn landmark, medium zoom.",
             "Screenshot 6 (winter; the 1936 start date, 1 January, is fine): fully zoomed in at the Chukotka "
             "landmark (Cape Dezhnev) and at the Alaska landmark (Cape Prince of Wales), one shot on each side of "
-            "the seam, including the water just beyond the curved edge. The weather there is set to Bering-Sea "
-            "winter on both sides of the curve, so variants a-c should show sea ice on both sides; in variants d "
-            "and e the ice should stop at the curve, with a ragged ice edge a few pixels outside it, while the ice "
-            "inside the curve stays. If a-c show no ice at all, say so (then this check is inconclusive).",
+            "the seam, including the water just beyond the curved edge. The weather is freezing with snow and "
+            "arctic water on both sides of the curve. Report which of these three you see: "
+            "(1) no ice anywhere, not even on the real sea inside the curve = INCONCLUSIVE; "
+            "(2) ice on the real sea inside the curve, but never on the filler beyond it, in ANY variant (a-e) = "
+            "the filler cannot show ice at all; report that, it is a finding in itself; "
+            "(3) ice on the filler beyond the curve in a-c, and in d and e the ice stops at the curve (a ragged "
+            "ice edge a few pixels outside it) while the ice inside the curve stays = the EXPECTED result.",
             "Screenshot 7: at the Chukotka landmark, zoom in and out fast, then pan fast across the seam to the "
             "Alaska landmark; note flicker or popping at the curved edge.",
             "Hover a tile beyond the curved edge: it should be a lake province; hover/click near the curve and "
@@ -490,9 +503,10 @@ class Exp09(Experiment):
                    "places: " + anchors + ".",
                    f"The area outside the curved outline is {info['off']} lake provinces coloured like ocean "
                    f"(provinces {info['off_ids'][0]}..{info['off_ids'][1]}); ships cannot enter them.",
-                   "Weather: the new sea regions north of 50 N and the northern filler use the vanilla Bering Sea "
-                   "weather (-20..0 C, arctic water all year), so there is winter ice to compare in screenshot 6; the "
-                   "southern ones use the vanilla Southern Ocean weather.",
+                   "Weather: the new sea regions north of 50 N use the vanilla Bering Sea weather (-20..0 C, arctic "
+                   "water all year). The northern filler (lake provinces) uses the same months with the winter snow "
+                   "of vanilla Northern Canada (a cold region with lakes), so it has both snow and arctic water. "
+                   "The southern ones use the vanilla Southern Ocean weather.",
                    "Use the same save/date and screen resolution for every variant (say which resolution)."])
 
     def check(self, ctx, build_id, out):
@@ -572,7 +586,8 @@ class Exp09(Experiment):
         got_regions = {p.relative_to(out).as_posix(): p.read_bytes()
                        for p in (out / "map/strategicregions").glob("*.txt")}
         pts = [tuple(self.layout_info["anchors"][s]) for s in SHOT6_STATES]
-        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, got_regions))
+        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, got_regions),
+                      set(np.nonzero(off)[0].tolist()))
         if bad:
             probs.append(f"screenshot-6 water without icy winter weather: {bad[:10]}")
         # variant extras

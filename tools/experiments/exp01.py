@@ -144,7 +144,8 @@ class Exp01(Experiment):
         pair, var = parse_id(build_id)
         a, b = PAIRS[pair]
         kind = (f"Type 'sea' and Through = {b} (a sea province)" if var == "A" else "an empty Type and Through = -1")
-        common_send = ["Link used: yes / no (from the route line), plus the screenshots.",
+        common_send = ["Link used: yes / no (from the route line; for the SEAM pair say which of the three readings), "
+                       "plus the screenshots. Say whether you deleted naval_dist.cache and retried.",
                        "Transit time in days for the move (and, if you can, for the ordinary route in the normal game).",
                        "Any strange icon (like a canal symbol) drawn along the link?"]
         notes = ["There are four EXP-01 mods: UK-A, UK-B (control: link inside the map) and SEAM-A, SEAM-B (link "
@@ -182,11 +183,18 @@ class Exp01(Experiment):
                 f"With the fleet still selected, right-click sea province {b}: it is in the Bering Sea at the far "
                 "LEFT edge of the map, just across the map edge from Kamchatka (scroll east past the right map edge "
                 "and it appears; hover shows the number). Look at the route line before unpausing.",
-                "Take a screenshot of the route line. One short step across the map edge (over Kamchatka) = YES, "
-                "the link is used. A long line south around Kamchatka and back north = NO, the link is ignored.",
-                "Unpause and note how many days the fleet needs to arrive (a link used with a wrong, huge length "
-                "would show as a very long transit); take a second screenshot.",
+                "Take a screenshot of the route line and read it: (1) one short step across the map edge (over "
+                "Kamchatka) = YES, the link is used and the map wrap is respected; (2) a line drawn the long way "
+                "across the WHOLE map (through Asia/Europe/America) but going straight from one province to the "
+                "other = the link is used but measured without the wrap; (3) a long line south around Kamchatka "
+                "and back north = NO, the link is ignored.",
+                "Unpause and note how many days the fleet needs to arrive (a link measured without the wrap would "
+                "show as a very long transit); take a second screenshot.",
                 f"Also try the reverse: move the fleet back from {b} to {a}.",
+                "If the link seems ignored (reading 3): quit the game, delete the two files naval_dist.cache and "
+                f"naval_dist_checksum.cache in {str(ctx.user).replace(chr(92), '/') if ctx.user else '$HOI4_USER_DIR'} "
+                "(the game's own sea-distance cache, it is rebuilt at the next start; if they are not there, search "
+                "the Hearts of Iron IV user folder for naval_dist.cache), start again and repeat the route test once.",
             ]
         return texts.readme(
             build_id, self.title_for(build_id), prop=prop,
