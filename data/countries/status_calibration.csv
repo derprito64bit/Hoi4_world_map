@@ -1,0 +1,10 @@
+case_id,entity,date,question,owner_claim,claude_claim,expected_disposition,evidence,status
+CAL-001,Belgian Congo,1936-01-01,starting tag or colony?,independent on paper (owner 2026-09-28),colony of Belgium since annexation 15 Nov 1908 (Congo Free State 1885-1908 was the nominally independent predecessor),colony -> map states of BEL + releasable,"Colonial Charter approved by Belgian Parliament 18 Oct 1908; sovereignty transferred 15 Nov 1908 (EBSCO Research Starters 'Belgium Annexes the Congo'; Britannica 'Congo Free State') - Tier 3, fact-checker must add Tier 1 (the annexation law/charter text)",VERIFY
+CAL-002,Egypt,1936-01-01,starting tag?,starting tag,starting tag (nominal independence 1922),starting tag,to verify,VERIFY
+CAL-003,Iraq,1936-01-01,starting tag?,starting tag,starting tag (independent 1932),starting tag,to verify,VERIFY
+CAL-004,Manchukuo,1936-01-01,starting tag?,starting tag,starting tag (proclaimed 1932),starting tag,to verify,VERIFY
+CAL-005,Tannu Tuva,1936-01-01,starting tag?,starting tag,starting tag,starting tag,to verify,VERIFY
+CAL-006,Nepal,1936-01-01,starting tag?,starting tag,starting tag,starting tag,to verify,VERIFY
+CAL-007,Annam / Cambodia / Laos (Luang Prabang) / Tonkin,1936-01-01,starting tags or French colony?,starting tags (protectorates with own monarchs),protectorates on paper; Tonkin's status needs checking; Cochinchina was a colony,verify each separately,to verify,VERIFY
+CAL-008,Hyderabad (princely state),1936-01-01,starting tag?,releasable,releasable (suzerainty of the British Crown),verify,to verify,VERIFY
+CAL-009,Senegal (French West Africa),1936-01-01,starting tag?,releasable,colony,verify,to verify,VERIFY
