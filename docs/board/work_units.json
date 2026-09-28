@@ -64,10 +64,10 @@
       "depends_on": [
         "P00b"
       ],
-      "status": "in_progress",
+      "status": "done",
       "branch": "wu/P00b-f1",
       "attempts": 1,
-      "notes": "owner finding 2026-09-28 18:46: launcher rewrote mod/p00b_EXP-01-UK-A.mod without the # marker; --uninstall refuses (exit 2)"
+      "notes": "owner finding 2026-09-28 18:46: launcher rewrote mod/p00b_EXP-01-UK-A.mod without the # marker; --uninstall refuses (exit 2); r1 e70f9a1: tests 189+1skip, review 0P0/0P1/5P2 (logged) -> merged"
     }
   ]
 }
