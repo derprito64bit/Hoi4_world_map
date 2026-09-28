@@ -49,6 +49,17 @@
     ],
     "triage": [
       "docs/board/triage/**"
+    ],
+    "fact-checker": [
+      "docs/factchecks/**"
+    ],
+    "visual-qa": [
+      "docs/visual-qa/**"
+    ],
+    "gfx-engineer": [
+      "assets/gfx/**",
+      "assets/common/defines/**",
+      "tests/gfx/**"
     ]
   },
   "agent_exceptions": {

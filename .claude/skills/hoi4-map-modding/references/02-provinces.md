@@ -23,15 +23,15 @@
 See 08-vanilla-baseline.md for the full table.
 
 ## 4. Density model for the Equal Earth map (this project)
-Equal Earth at the project canvas (4608×2048, 60° S crop) gives **56.02 km² per pixel everywhere** (equal-area); land ≈ 2.40 M px.
+Equal Earth at the project canvas (5120×2304, 60° S crop) gives **45.37 km² per pixel everywhere** (equal-area); land ≈ 2.96 M px.
 Because Equal Earth does not inflate high latitudes, Europe gets far fewer pixels than in vanilla, so density is set by an explicit **importance weight**, not by pixel area — and **historical border lines override density**.
 
 Target province area (px) for a land cell:
 ```
 A_target = clamp( A_base / w , A_min , A_max )
-A_base, w  = docs/PROJECT_SPEC.md §3 (single source of truth; currently A_base = 160)
-A_min      = 24 px (≈ 1,350 km²; 3× the 8-px floor)
-A_max      = 1,600 px and bbox side ≤ BBOX_MAX
+A_base, w  = docs/PROJECT_SPEC.md §3 (single source of truth; currently A_base = 200)
+A_min      = 30 px (≈ 1,360 km²; ~4× the 8-px floor)
+A_max      = 2,000 px and bbox side ≤ BBOX_MAX
 ```
 Border rule: every line of the border overlay (1914 / 1918–1923 / 1936 / 1939, 03-states.md §3.2b) must coincide with province borders; provinces are split along overlay lines even if that makes them smaller than A_target (never below 8 px — merge slivers across the *other* side of the overlay line instead, and log it).
 Sea provinces: `A_target_sea = 900–2,500 px` near coasts / in naval theatres, larger in open ocean up to the bbox limit; ring historically important small islands with their own sea provinces so they are identifiable (owner decision DEC-009).

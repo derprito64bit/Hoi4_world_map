@@ -14,7 +14,7 @@ Canvas convention (matches how the game reads BMPs after decoding):
     which lets the game's horizontal wrap join them at the equator.
 
 CLI:
-  python3 ee_project.py info                      # project defaults: 4608x2048, lon0 10.9, 60°S..90°N
+  python3 ee_project.py info                      # project defaults: 5120x2304, lon0 10.9, 60°S..90°N
   python3 ee_project.py info  --width 5120 --height 2560 --lat-min -90   # full globe variant
   python3 ee_project.py mask  --out globe_mask.png
   python3 ee_project.py point --lon 13.4 --lat 52.5
@@ -137,8 +137,9 @@ def selftest():
     area_px = m.sum()
     expect = 4 * np.pi * c.scale ** 2
     assert abs(area_px - expect) / expect < 1e-3, (area_px, expect)
-    # cropped canvas (project default): 60°S crop fits 4608 x 2048 exactly
-    c = Canvas(4608, 2048, 10.9, lat_min=-60.0)
+    # cropped canvases: 60°S crop fits 4608 x 2048 exactly and 5120 x 2304 (project default) with ~14 rows spare
+    Canvas(4608, 2048, 10.9, lat_min=-60.0)
+    c = Canvas(5120, 2304, 10.9, lat_min=-60.0)
     col, row = c.to_pixel(10.9, -60.0)
     assert abs(row - (c.margin + c.globe_h)) < 1e-6
     lo, la = c.to_lonlat(*c.to_pixel(13.4, 52.5))
@@ -149,8 +150,8 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["info", "mask", "point", "selftest"])
-    ap.add_argument("--width", type=int, default=4608)
-    ap.add_argument("--height", type=int, default=2048)
+    ap.add_argument("--width", type=int, default=5120)
+    ap.add_argument("--height", type=int, default=2304)
     ap.add_argument("--lat-min", type=float, default=-60.0)
     ap.add_argument("--lat-max", type=float, default=90.0)
     ap.add_argument("--lon0", type=float, default=10.9)

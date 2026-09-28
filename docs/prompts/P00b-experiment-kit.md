@@ -1,9 +1,9 @@
-# TASK P00b: Build the in-game experiment kit (EXP-01..EXP-07)
+# TASK P00b: Build the in-game experiment kit (EXP-01..EXP-09)
 
 Overwatch dispatches this as work unit `P00b` to **pipeline-engineer** (worktree, branch `wu/P00b`), then runs the normal loop (validator → code-reviewer → triage).
 
 ## 1. OBJECTIVE
-Generate seven tiny, self-contained test mods that answer the open engine questions EXP-01..EXP-07 (see the newest `to-check/` file), each with a one-page instruction sheet the owner can follow without modding knowledge, so the answers can fix `PROVINCE_BUDGET`, `BBOX_MAX`, the seam-link method, the off-globe filler and state-ID rules before P01.
+Generate nine tiny, self-contained test mods that answer the open engine questions EXP-01..EXP-09 (see both files in `to-check/`), each with a one-page instruction sheet the owner can follow without modding knowledge, so the answers can fix `PROVINCE_BUDGET`, `BBOX_MAX`, the seam-link method, the off-globe filler and state-ID rules before P01.
 
 ## 2. SCOPE & BOUNDARIES
 - Active scope: `tools/experiments/**`, `tests/experiments/**`. Output mods go to `build/experiments/EXP-xx/` (gitignored) plus a launcher `.mod` file written by an install script into `$HOI4_USER_DIR/mod/` **only when the owner runs** `python tools/experiments/install.py EXP-xx`.
@@ -30,6 +30,11 @@ Generate seven tiny, self-contained test mods that answer the open engine questi
 | EXP-05 | trees.bmp resized to 2:1 and to 3:1 | screenshot forests near the map edges | screenshots |
 | EXP-06 | a block of the map replaced by lake provinces (simulating the off-globe filler) | pan there, move a fleet along it | rendering/pathing notes |
 | EXP-07 | state IDs with one gap (e.g. renumber the last state to max+2) | load, open the state | error.log |
+| EXP-08 | canvas above the community ceiling: vanilla map padded with ocean to 5632×2560 and 6144×2560 (all layers scaled consistently); plus a variant that adjusts `gfx/FX/constants.fxh` map constants if P00 found size-tied values | load each, pan to all edges, note load time | loads? rendering artefacts? error.log |
+| EXP-09 | edge-look prototype on the project canvas: Equal Earth off-globe mask filled with lake provinces, heightmap 89, ocean colormap tone, `CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM` and `CAMERA_MAX_HEIGHT` variants, optional minimal shader fade (built with gfx-engineer) | screenshots at 5 zoom levels at the curved edges, the Pacific seam and the 60° S edge | screenshots + preference |
+
+## 5b. LIMITATIONS (write into each README.txt)
+Each experiment's sheet ends with "What this test cannot prove" copied from `to-check/2026-09-28_rendering-countries-canvas.md` (limitations table and EXP-08/09 rows). Results are recorded with these caveats.
 
 ## 6. FAILURE MODES
 1. An experiment that changes several things (ambiguous result).
@@ -45,4 +50,4 @@ Generate seven tiny, self-contained test mods that answer the open engine questi
 - `git status --porcelain` → no files outside scope
 
 ## 9. STOP CONDITION & CHECKPOINT
-Commit `tools(P00b): in-game experiment kit`. Overwatch merges after the loop and posts to the owner: the install command per experiment and what to send back. Results go into a new dated `to-check/` file.
+Commit `tools(P00b): in-game experiment kit`. EXP-09 needs a small `gfx-engineer` WU (`P00c`) for the camera-define and shader variants; overwatch dispatches it in parallel (disjoint scope). Overwatch merges after the loop and posts to the owner: the install command per experiment and what to send back. Results go into a new dated `to-check/` file.

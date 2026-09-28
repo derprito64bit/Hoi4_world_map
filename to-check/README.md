@@ -13,3 +13,4 @@ Status values: `OPEN`, `DONE (date, evidence)`, `CHANGED (see <file>#<id>)`, `DR
 | File | Date | Contents |
 |---|---|---|
 | [2026-09-27_decisions-and-checks.md](2026-09-27_decisions-and-checks.md) | 2026-09-27 | first batch of owner decisions, EXP-01..07, open checks |
+| [2026-09-28_rendering-countries-canvas.md](2026-09-28_rendering-countries-canvas.md) | 2026-09-28 | countries rule, 5120×2304 canvas, rendering limits, EXP-08/09, experiment limitations, new agents, build strategy |

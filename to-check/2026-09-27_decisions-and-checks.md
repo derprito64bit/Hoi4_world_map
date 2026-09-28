@@ -5,7 +5,7 @@
 |---|---|---|---|
 | DEC-001 | Start date 1936-01-01 only; 1939 re-adjusted later | P04/P06 build 1936; 1939 lines only as border overlay | DONE |
 | DEC-002 | Crop at 60° S like vanilla first (no Antarctica); revisit after testing | canvas 4608×2048 (60°S..90°N fits exactly) | OPEN → see CHK-001 |
-| DEC-003 | Canvas width 4608 for stability | 56 km²/px; see CHK-002 for the 5120×2304 alternative | DONE |
+| DEC-003 | Canvas width 4608 for stability | 56 km²/px; see CHK-002 for the 5120×2304 alternative | CHANGED (see 2026-09-28_rendering-countries-canvas.md#DEC-019) |
 | DEC-004 | Central meridian 10.9° E | map edge in the Bering Strait | DONE |
 | DEC-005 | High province density, accuracy of borders is the main goal; include 1914/1918 alt-history borders; more provinces in the Sahara | border-overlay rule in PROJECT_SPEC §3; budget ≈ 20k provisional | OPEN → EXP-03 |
 | DEC-006 | More fine-grained states than vanilla; build from scratch; do **not** use Kovas' States Rework as a source | STATE_TARGET 1,800–2,500; hard constraint §6.7 | DONE |
@@ -38,11 +38,11 @@ How every experiment works for you: the agent writes a tiny test mod into `build
 | ID | Check | Who | Status |
 |---|---|---|---|
 | CHK-001 | After a first playable map: decide whether to add Antarctica back (full globe needs 4608×2304 or 5120×2560) | owner | OPEN |
-| CHK-002 | With the 60° S crop, 5120×2304 (11.8 M px, ≈ vanilla's 11.5 M) gives 45 km²/px — 24 % finer than 4608×2048. Keep 4608 or switch? Decide after EXP-03 and a performance test | owner | OPEN |
+| CHK-002 | With the 60° S crop, 5120×2304 (11.8 M px, ≈ vanilla's 11.5 M) gives 45 km²/px — 24 % finer than 4608×2048. Keep 4608 or switch? Decide after EXP-03 and a performance test | owner | DONE (2026-09-28, DEC-019: 5120×2304) |
 | CHK-003 | Diff 1.19.x map/state formats against the 1.14.1 baseline (vanilla 1.19 has ≈ 1,081 states, ≈ 10,150 land provinces per MapChart — Tier 4) | agent (P00) | OPEN |
 | CHK-004 | Launcher mod format: does 1.19.x still use `descriptor.mod` + `.mod` with `replace_path`? | agent (P00, reads your install) | OPEN |
 | CHK-005 | Sizes of every `map/terrain/*.dds` in 1.19.x | agent (P00) | OPEN |
-| CHK-006 | Map size and province count of installed Kovas' States Rework (Workshop 2887517564) and Darkest Hour (1088848965) — **limits only**, nothing else is read | agent (P00) | OPEN |
+| CHK-006 | Map size and province count (limits only) of installed Kovas' States Rework (Workshop 2887517564) and Darkest Hour (1088848965) — **limits only**, nothing else is read | agent (P00) | OPEN |
 | CHK-007 | Minimum province size — owner has no data; answered by EXP-04 | agent | OPEN |
 | CHK-008 | trees.bmp size — answered by EXP-05 | agent | OPEN |
 | CHK-009 | Merge branch `claude/laughing-newton-41591c` into `main` before the agent fleet starts (worktrees branch from `main`) | owner / me via PR | OPEN |

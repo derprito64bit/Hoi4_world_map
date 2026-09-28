@@ -10,17 +10,17 @@ y = θ · (A1 + A2θ² + A3θ⁶ + A4θ⁸)
 Unit sphere extents: |x| ≤ 2.70663 (equator at λ = ±180°), |y| ≤ 1.31736 (poles). Aspect of the outline ≈ **2.0546 : 1**. Poles are lines (flat top/bottom), sides are curved.
 `scripts/ee_project.py` implements forward + Newton inverse; its `selftest` checks against PROJ 9 (`+proj=eqearth`) to 1e-6 and round-trips 20k random points. Always use it (or PROJ) — never re-derive by hand.
 
-## 2. Canvas decision (owner decisions 2026-09-27 — see `to-check/2026-09-27_decisions-and-checks.md`)
+## 2. Canvas decision (owner decisions 2026-09-27/28 — see `to-check/`)
 | Parameter | Project value | Why |
 |---|---|---|
-| W × H | **4608 × 2048** (owner: 4608 wide for stability) | multiples of 256; with the 60° S crop the outline needs 2,047.8 rows → fits exactly; 9.44 M px (vanilla 11.53 M) |
+| W × H | **5120 × 2304** (DEC-019) | multiples of 256; with the 60° S crop the outline needs 2,275.3 rows → 14 spare rows top and bottom; 11.80 M px ≈ vanilla's 11.53 M |
 | Latitudes | **60° S .. 90° N** (crop like vanilla; Antarctica revisited later, CHK-001) | `Canvas(..., lat_min=-60)` |
-| Alternatives | 5120 × 2304 with the same crop (45.4 km²/px, 11.8 M px); 4608 × 2304 / 5120 × 2560 for the full globe | CHK-002 |
+| Alternatives | 4608 × 2048 (56 km²/px, fits the crop exactly); larger canvases (e.g. 5632 × 2560) only if EXP-08 shows the engine loads beyond the community area ceiling; full globe needs ≥ 2,492 rows at 5120 wide | DEC-020 |
 | Fit | equator spans the full width (scale 945.826 px/rad) | the left and right image edges are both the cut meridian, so the game's horizontal wrap joins the Pacific at the equator |
 | Central meridian lon0 | **10.9° E** → cut at **169.1° W** | measured on Natural Earth 50 m land: the cut meridian that crosses the least land north of 60° S (0.16°, only St Lawrence Island, Alaska); all of Chukotka, Wrangel, Fiji, Tonga, Samoa, Chatham stay on the east (Asian/Oceanian) edge, Alaska on the west edge |
-| Resolution | 56.02 km²/px (≈ 7.48 km side), 12.8 px per degree of longitude at the equator | `ee_project.py info` |
+| Resolution | 45.37 km²/px (≈ 6.74 km side), 14.22 px per degree of longitude at the equator | `ee_project.py info` |
 
-Land pixel budget (Natural Earth 50 m countries, geodesic areas, measured at 45.37 km²/px; multiply by 0.81 for 4608 wide): Asia 686k, Africa 659k, North America 535k, "Europe" incl. all of Russia 506k, South America 388k, Antarctica 272k (cropped away at 60° S), Oceania 187k — ≈ 2.96 M land px without Antarctica at 5120, ≈ 2.40 M at 4608.
+Land pixel budget (Natural Earth 50 m countries, geodesic areas, measured at 45.37 km²/px; multiply by 0.81 for 4608 wide): Asia 686k, Africa 659k, North America 535k, "Europe" incl. all of Russia 506k, South America 388k, Antarctica 272k (cropped away at 60° S), Oceania 187k — ≈ 2.96 M land px without Antarctica at 5120 (project canvas).
 
 ## 3. Off-globe area (pixels outside the curved outline)
 The engine needs every pixel to belong to a province. Recommended treatment (OPEN-3, confirm in game):

@@ -29,11 +29,12 @@ cited boundary source) and whose gameplay density is deliberate, not accidental.
 | heightmap / terrain / rivers / trees / normal / colormap / cities | `references/05-rasters.md` |
 | Numbers to calibrate against | `references/08-vanilla-baseline.md` |
 | Packaging, descriptor, replace_path, localisation, vanilla script breakage | `references/10-mod-integration.md` |
+| Camera, shaders, map edges, what the renderer can and cannot do | `references/11-rendering.md` |
 | Evidence tiers, what is verified vs. unverified, open questions | `references/09-sources.md` |
 
 Scripts (run from the repo root; need `numpy pillow`):
 - `scripts/validate_map.py <mod_root> [--vanilla <game_root>] [--json out.json]` — offline invariant checker. Vanilla 1.14.1 baseline: **9 ERROR** (all `STATE_VP_OUTSIDE`, vanilla data bugs), 4 WARN.
-- `scripts/ee_project.py selftest|info|point|mask` — Equal Earth ↔ pixel canvas (verified against PROJ to 1e-6). Project defaults: 4608×2048, lon0 10.9, 60° S..90° N.
+- `scripts/ee_project.py selftest|info|point|mask` — Equal Earth ↔ pixel canvas (verified against PROJ to 1e-6). Project defaults: 5120×2304, lon0 10.9, 60° S..90° N.
 
 Target game version is **1.19.x**; the vanilla numbers in `references/08-vanilla-baseline.md` are from 1.14.1 and must be re-measured before use as calibration. Agents working in this repo are defined in `.claude/agents/` (see `docs/AGENT_SYSTEM.md`).
 

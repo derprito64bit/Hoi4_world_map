@@ -14,7 +14,10 @@ enforced by config rather than prose, no extra personas without a distinct job.
 | **state-builder** (worktree) | sonnet | `data/states/**`, `data/provenance/**`, `data/research/**`, `data/countries/**` | one country/region per WU: geometry, splits/merges, attributes, provenance | researcher |
 | **pipeline-engineer** (worktree) | opus | `tools/**`, `tests/**`, `requirements.txt`, `data/README.md`, `data/manifest.csv`, `.gitignore` | all generator code; the only code writer | — |
 | **compat-engineer** (worktree) | sonnet | `tools/compat/**`, `tests/compat/**`, `data/compat/**` | vanilla 1.19.x compatibility: ID mapping + override generator | researcher |
-| **code-reviewer** | opus | `docs/reviews/**` | adversarial review of generator/compat diffs | — |
+| **gfx-engineer** (worktree) | opus | `assets/gfx/**`, `assets/common/defines/**`, `tests/gfx/**` | shader overrides + camera/graphics defines for a seamless look; colour-only effects | — |
+| **code-reviewer** | opus | `docs/reviews/**` | adversarial review of generator/compat/gfx diffs | — |
+| **fact-checker** | sonnet | `docs/factchecks/**` | verifies 100 % of claim rows: source exists, supports the claim, right date, right tier, country status | — |
+| **visual-qa** | opus | `docs/visual-qa/**` | looks at rendered previews and owner screenshots; seams, edges, slivers, island placement, shape vs. source | — |
 | **history-auditor** | opus, effort xhigh | `docs/audits/**` | adversarial audit of historical claims; PASS/FAIL for G2/G4 | — |
 | **validator** | haiku | `build/**` | runs deterministic checks, reports counts and deltas | — |
 | **triage** | sonnet | `docs/board/triage/**` | the feedback looper: dedupes/ranks all findings, trend + regression detection, MERGE/FIX/BLOCK | — |
@@ -45,7 +48,7 @@ dispatch (overwatch) ─► builder/engineer commits on wu/<id>
       │                         ▼
  FIX (≤3 rounds)          validator (numbers)  ─┐
       │                         │               │
-      │                  code-reviewer (tools) / history-auditor (data)
+      │   code-reviewer (tools/assets) · fact-checker (all data rows) · history-auditor (history sample) · visual-qa (map output)
       │                         │               │
       └──────────── triage (ranked P0/P1/P2, trend, regression) ─► MERGE / BLOCK
 ```

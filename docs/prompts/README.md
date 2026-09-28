@@ -7,7 +7,7 @@ Objective → Scope/Frozen → Context → Constraints (hard / preference / disc
 | File | Phase | Needs before start | Gate after |
 |---|---|---|---|
 | `P00-setup-and-parameters.md` | inspect the 1.19.x install, measure engine limits, confirm parameters | nothing | — |
-| `P00b-experiment-kit.md` | build test mods EXP-01..07 for the owner | P00 | G0 (owner, with EXP results) |
+| `P00b-experiment-kit.md` | build test mods EXP-01..09 for the owner (EXP-09 shader/camera part = WU P00c, gfx-engineer) | P00 | G0 (owner, with EXP results) |
 | `P01-tooling.md` | repo scaffolding, build runner, provenance checker | G0 | — |
 | `P02-data-acquisition.md` | download + manifest of geodata | P01 | — |
 | `P03-canvas-and-masks.md` | land/sea/lake/off-globe masks, draft heightmap | P02 | G1 |
@@ -20,6 +20,7 @@ Objective → Scope/Frozen → Context → Constraints (hard / preference / disc
 | `P10-positions-supply.md` | buildings, unitstacks, airports, rocketsites, weatherpositions, supply nodes, railways | P09 | — |
 | `P11-packaging.md` | descriptor, replace_path, vanilla stubs, localisation completeness | P10 | G5 |
 | `P13-vanilla-compat.md` | P13a vanilla state/province mapping (before P06); P13b script remapping (after P10) | G3 / P10 | — |
+| (P14, prompt written when due) | rendering: camera defines, shader edge treatment, constants.fxh (gfx-engineer) | P13b | — |
 | `P12-ingame-verification.md` | owner-run debug load + agent fix loop | G5 | G6 (owner) |
 | `A1-adversarial-map-audit.md` | independent auditor for G2/G4 (and any time) | any | — |
 | `A2-boundary-research-audit.md` | research one disputed/uncertain boundary | any | — |

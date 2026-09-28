@@ -19,29 +19,29 @@ Owner decisions are logged with dates in `to-check/` (one dated file per batch).
 | Key | Value | Rationale / reference |
 |---|---|---|
 | `PROJECTION` | Equal Earth | owner requirement; skill `references/06-equal-earth.md` |
-| `CANVAS` | **4608 × 2048** (9.44 M px, 18 % below vanilla's area) | owner chose 4608 wide for stability; with the 60° S crop the outline needs 2,047.8 rows, so 2048 fits exactly |
+| `CANVAS` | **5120 × 2304** (11.80 M px ≈ vanilla's 11.53 M) | owner decision 2026-09-28 (DEC-019); with the 60° S crop the outline needs 2,275.3 rows → 14 spare rows top and bottom. Larger canvases only if EXP-08 proves the engine loads them (DEC-020) |
 | `LAT_RANGE` | **60° S .. 90° N** (Antarctica cropped, like vanilla) — **test first**, see `to-check/` | owner decision 2026-09-27 |
 | `LON0` | 10.9° E (map edge at 169.1° W, Bering Strait) | least land on the seam (measured); owner accepted |
-| Resolution | 56.0 km² per pixel (~7.5 km side), 12.8 px per degree of longitude at the equator | `ee_project.py info` |
+| Resolution | 45.4 km² per pixel (~6.7 km side), 14.2 px per degree of longitude at the equator | `ee_project.py info` |
 | `START_DATE` | **1936-01-01 only**; 1939 bookmark later | owner decision |
 | `BORDER_OVERLAY_DATES` | 1914-07-28, 1918-11-11 and the 1920–1923 treaty settlements, 1936-01-01, 1939-08-14 | owner wants WW1-era alt-history borders expressible; provinces follow the union of these lines |
 | `GAME_VERSION` | **1.19.x** (1.19.3 current) — skill baseline was measured on 1.14.1; P00 re-measures | owner install |
 | `HOI4_GAME_DIR` | `E:/SteamLibrary/steamapps/common/Hearts of Iron IV` (verify in P00) | owner |
 | `PROVINCE_BUDGET` | provisional **≈ 20,000** (land ≈ 15,500, sea ≈ 4,000, lakes + off-globe ≈ 500) — **must be confirmed by EXP-03** before P05 | owner wants many provinces; engine ceiling unknown |
-| `MIN_PROVINCE_PX` | 24 target minimum (≈ 1,350 km²), 8 hard floor, islands ≥ 8 px enlarged only minimally | 02-provinces.md; owner: islands "only very slightly" enlarged |
+| `MIN_PROVINCE_PX` | 30 target minimum (≈ 1,360 km²), 8 hard floor, islands ≥ 8 px enlarged only minimally | 02-provinces.md; owner: islands "only very slightly" enlarged |
 | `BBOX_MAX` | land 250 px, sea 180 px until EXP-02 measures the real limit | OPEN-4 |
 | `STATE_TARGET` | **≈ 1,800–2,500 states**, finer than vanilla 1.19's ≈ 1,081 | owner: "more fine-grained"; built from scratch — no other mod used as a source |
-| `COUNTRIES` | 1936 sovereign states + historical releasable claimants with cores | owner decision |
+| `COUNTRIES` | Tags present at start: entities that were sovereign **or de jure / nominally independent with their own government** in 1936 (e.g. Egypt, Iraq, Manchukuo, the Indochinese protectorates as the owner describes them). Colonies and princely states are **not** separate countries at start; they are map states of their colonial power and can be releasables. Plus historical releasable claimants with cores. Exact list confirmed per country by the fact-checker. | owner decisions DEC-008, DEC-018 |
 | `MANPOWER` | census population nearest 1936 (+ gridded share where census detail is missing) | owner decision |
 | `RESOURCES` | real 1936 deposits/production (cited) | owner decision |
 | `RIVERS` | dense (well beyond vanilla's major-rivers set) | owner decision |
 | `COMPATIBILITY` | vanilla 1.19.x focus trees/events keep working (compat layer, §10); RT56 compatibility is a later, separate goal | owner decision |
 | `DISTRIBUTION` | private until finished; non-commercial dataset licences acceptable for now, recorded in `data/manifest.csv` | owner decision |
 
-## 3. Density weights (importance w; `A_target = clamp(A_base / w, 24, 1600)` px, `A_base = 160`)
+## 3. Density weights (importance w; `A_target = clamp(A_base / w, 30, 2000)` px, `A_base = 200` at 45.4 km²/px)
 | Region (1936 lens) | w | ≈ km² per province |
 |---|---|---|
-| Western & Central Europe, Italy, Balkans, Low Countries | 5.0 | ~1,800 (≈ 32 px) |
+| Western & Central Europe, Italy, Balkans, Low Countries | 5.0 | ~1,800 (≈ 40 px) |
 | Poland, Baltics, European USSR west of the Volga, Finland, Scandinavia south | 4.0 | ~2,200 |
 | Japan, Korea, eastern China coast, Philippines, Java | 4.0 | ~2,200 |
 | North Africa coast, Levant, Anatolia, Caucasus, Iraq | 3.0 | ~3,000 |
@@ -54,7 +54,7 @@ Owner decisions are logged with dates in `to-check/` (one dated file per batch).
 Plus a **border rule** that overrides density: every line in the border overlay (§2) must be a province border, so provinces are split wherever an overlay line crosses them. P05 prints: count from density alone, count added by the overlay, total vs. `PROVINCE_BUDGET`; if over budget, raise `A_base` globally (never drop overlay lines).
 
 ## 4. Repository layout
-`mod/` (generated mod root), `tools/` (generators), `data/` (curated inputs, provenance; raw downloads gitignored), `build/` (gitignored reports), `docs/` (spec, prompts, logs, board, reviews, audits), `to-check/` (dated owner decisions and pending checks), `.claude/` (skill, agents, hooks).
+`mod/` (generated mod root), `tools/` (generators), `assets/` (hand-authored non-generated mod assets such as shaders `assets/gfx/FX/**`, copied into `mod/` by the build), `data/` (curated inputs, provenance; raw downloads gitignored), `build/` (gitignored reports), `docs/` (spec, prompts, logs, board, reviews, audits, fact-checks, visual QA), `to-check/` (dated owner decisions and pending checks), `.claude/` (skill, agents, hooks).
 Phase logs: `docs/logs/PXX.md`. Agent system: `docs/AGENT_SYSTEM.md`.
 
 ## 5. Phases, dependencies and gates
@@ -64,7 +64,7 @@ P01 tooling ─► P02 data acquisition ─► P03 canvas & masks ─G1─►
 P04 state geometry + border overlay (per-country WUs, parallel) ─G2 (history-auditor)─►
 P05 provinces + definition.csv ─G3─► P13a vanilla state/province mapping ─► P06 state files, countries, releasables ─G4 (history-auditor)─►
 P07 strategic regions & weather ─► P08 adjacencies & seam ─► P09 rasters (dense rivers) ─►
-P10 positions, supply, railways ─► P13b vanilla script remapping ─► P11 packaging ─G5─►
+P10 positions, supply, railways ─► P13b vanilla script remapping ─► P14 rendering (camera defines, shader edge treatment, constants.fxh) ─► P11 packaging ─G5─►
 P12 in-game verification loop (owner) ─G6─► release candidate
 ```
 | Gate | Entered only when | Decided by |
@@ -101,3 +101,18 @@ New focus trees/events, RT56 compatibility, the 1939 bookmark (planned later), b
 - Vanilla country tags are kept; new releasables get new tags.
 - Every vanilla map reference is classified in a coverage report (mapped / needs-human / not-applicable).
 - Consequence for P06: state ID assignment happens **after** the compat mapping of vanilla states is known (P06 consumes `data/compat/state_map.csv` produced by an early P13 WU). The phase order above reflects this: P13a (mapping) runs right after G3, P13b (script rewriting) after P10.
+
+## 11. Rendering and "seamless edges" (P14)
+HOI4 renders the map as a flat, heightmapped plane that wraps horizontally; it has **no projection, globe or zoom-dependent warp** — every gameplay coordinate (provinces, units, icons, clicks) is tied to the pixel grid, so geometry cannot be distorted per zoom level without desynchronising the game. The Equal Earth distortion is therefore baked into the bitmaps by our pipeline. What *can* be adjusted (skill `references/11-rendering.md`):
+- camera defines in `common/defines/00_graphics.lua` (`CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM`, `CAMERA_MIN/MAX_HEIGHT`, main-menu camera coordinates, which are vanilla-map positions and must be moved);
+- shaders in `gfx/FX/*.fx/.fxh` (overridable by mods) — e.g. fade the off-globe area to a styled ocean/vignette that intensifies or relaxes with camera distance, the same way vanilla fades border colours with zoom;
+- `gfx/FX/constants.fxh` map constants (`MAP_NUM_TILES`, `TEXELS_PER_TILE`, `WATER_HEIGHT`), which may have to match the new canvas (P00 measures; EXP-08 tests).
+Goal: moving around the map feels as seamless as vanilla — no hard rectangle corners visible at normal zoom, no seam artefact at the wrap.
+
+## 12. Build strategy: walking skeleton first (proposal, Q-002)
+The fastest way to a correct map is to make the **whole pipeline run end-to-end early**, then refine:
+1. **Skeleton (after P03):** one state per 1936 sovereign country / colony (from the start-date sovereignty dataset), provinces from the density model only, placeholder regions/weather/rasters. Run P05–P11 in "skeleton mode" → the owner loads a playable (ugly) map within the first weeks → EXP results and in-game errors surface early.
+2. **Refinement waves:** per-country state-builder WUs (P04) replace skeleton states country by country, in parallel batches of up to 6, each through the full loop (validator → fact-checker → history-auditor → visual-qa → triage). Province borders that must move are handled by **splitting** provinces (the larger part keeps its ID, the rest get new appended IDs) — IDs are never renumbered or reused.
+3. **Order of waves:** Europe → Middle East & North Africa → East Asia → South & Southeast Asia → Americas → sub-Saharan Africa → Oceania, so vanilla focus-tree compatibility (P13) is testable for the majors first.
+4. After each wave: rebuild everything downstream with `tools/build_all.py`, owner in-game smoke test (P12 round).
+Benefits: engine limits and rendering problems appear before thousands of states are researched; every wave is small enough for the 3-round fix loop; the owner can play-test continuously.
