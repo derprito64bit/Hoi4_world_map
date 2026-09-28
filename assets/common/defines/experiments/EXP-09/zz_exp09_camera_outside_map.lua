@@ -2,6 +2,7 @@
 -- Install into the test mod's common/defines/ under this basename; "zz_" sorts after vanilla 00_*.lua / 01_*.lua,
 -- so these assignments run after NDefines_Graphics has been built by 00_graphics.lua.
 -- Namespace checked against vanilla 1.19.3 common/defines/00_graphics.lua: NDefines_Graphics = { ... NGraphics = { ... } }.
+-- NDefines.NGraphics.* would work equally: 00_graphics.lua copies every NDefines_Graphics table into NDefines.
 
 -- Vanilla 1.19.3: 200.0. Canvas 5120x2304 (ee_project.py info): the Equal Earth globe ends 14.3 rows below the top
 -- edge (90N pole line) and 14.3 rows above the bottom edge (60S cut). Past those rows there is only lake filler and

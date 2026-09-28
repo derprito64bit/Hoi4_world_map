@@ -1,6 +1,7 @@
 -- EXP-09 (P00c) variant c and later: cap the maximum zoom-out height.
 -- Install into the test mod's common/defines/ under this basename (sorts after vanilla 00_*.lua / 01_*.lua).
 -- Namespace checked against vanilla 1.19.3 common/defines/00_graphics.lua: CAMERA_MAX_HEIGHT lives in NFrontend, not NGraphics.
+-- NDefines.NFrontend.* would work equally: 00_graphics.lua copies every NDefines_Graphics table into NDefines.
 
 -- Vanilla 1.19.3: 3000.0 (for the 5632x2048 vanilla canvas). At 3000 the whole map height and the empty space past the
 -- top/bottom edges are on screen. 2400.0 (-20 %) is a first calibration point, not a final value: the map camera's
