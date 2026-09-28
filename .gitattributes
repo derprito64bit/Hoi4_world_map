@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Map/image/array files: never convert line endings or diff as text
+*.bmp binary
+*.dds binary
+*.png binary
+*.tga binary
+*.npy binary

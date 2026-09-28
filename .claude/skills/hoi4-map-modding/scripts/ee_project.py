@@ -14,11 +14,11 @@ Canvas convention (matches how the game reads BMPs after decoding):
     which lets the game's horizontal wrap join them at the equator.
 
 CLI:
-  python3 ee_project.py info                      # project defaults: 5120x2304, lon0 10.9, 60°S..90°N
-  python3 ee_project.py info  --width 5120 --height 2560 --lat-min -90   # full globe variant
-  python3 ee_project.py mask  --out globe_mask.png
-  python3 ee_project.py point --lon 13.4 --lat 52.5
-  python3 ee_project.py selftest
+  python ee_project.py info                      # project defaults: 5120x2304, lon0 10.9, 60°S..90°N
+  python ee_project.py info  --width 5120 --height 2560 --lat-min -90   # full globe variant
+  python ee_project.py mask  --out globe_mask.png
+  python ee_project.py point --lon 13.4 --lat 52.5
+  python ee_project.py selftest
 """
 import argparse
 import sys

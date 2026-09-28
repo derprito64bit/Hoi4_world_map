@@ -36,7 +36,7 @@ Provinces generated before states/overlay were rasterised; non-deterministic IDs
 ## 7. VERIFICATION
 - `python .claude/skills/hoi4-map-modding/scripts/validate_map.py mod --vanilla "$HOI4_GAME_DIR" --bbox-limit 250 --bbox-limit-sea 180 --json build/validate_p05.json` → 0 ERROR among bitmap/definition/X/coastal codes (state/region codes pending P06/P07 are listed as expected)
 - `python tools/make_provinces.py --check` (no province spans two states / overlay sides / surface classes / the seam; count ≤ budget; no ID changed vs. previous `province_ids.csv` except appended)
-- run twice → identical `sha256sum mod/map/provinces.bmp mod/map/definition.csv`
+- run twice → identical `python -c "import hashlib,sys;[print(hashlib.sha256(open(f,'rb').read()).hexdigest(),f) for f in sys.argv[1:]]" mod/map/provinces.bmp mod/map/definition.csv`
 
 ## 8. STOP
 Skeleton: G3 recorded by overwatch → P13a + P06. Split mode: merge after each wave, then rebuild downstream.
