@@ -29,10 +29,10 @@
       "depends_on": [
         "P00"
       ],
-      "status": "in_progress",
+      "status": "changes_requested",
       "branch": "wu/P00b",
-      "attempts": 1,
-      "notes": "EXP-09 consumes P00c variant manifest assets/gfx/FX/experiments/EXP-09/variants.json (interface contract in docs/logs/P00b.md)"
+      "attempts": 2,
+      "notes": "EXP-09 consumes P00c variant manifest assets/gfx/FX/experiments/EXP-09/variants.json (interface contract in docs/logs/P00b.md); r1 a3820a9: validator GREEN, review 1P0/3P1/4P2, triage FIX (EXP-09 ice weather P0; seam framing, EXP-01 seam pair, --check EXP-08/09) -> r2"
     },
     {
       "id": "P00c",
