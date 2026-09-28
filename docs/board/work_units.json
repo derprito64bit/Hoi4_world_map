@@ -20,7 +20,7 @@
     {
       "id": "P00b",
       "phase": "P00",
-      "title": "Build the in-game experiment kit (EXP-01..EXP-07 test mods) for the owner",
+      "title": "Build the in-game experiment kit (EXP-01..EXP-09 test mods; EXP-09 shader part in P00c) for the owner",
       "agent": "pipeline-engineer",
       "scope": [
         "tools/experiments/**",
