@@ -15,12 +15,12 @@
       "status": "done",
       "branch": "main",
       "attempts": 0,
-      "notes": "overwatch's own read-only phase; log committed d982fee; Gate G0 answered 2026-09-28 (Q-003..Q-008), S1\u2013S11 applied"
+      "notes": "overwatch's own read-only phase; log d982fee; G0 answered 349c7d4; CHK-014 PASS 2026-09-28"
     },
     {
       "id": "P00b",
       "phase": "P00",
-      "title": "Build the in-game experiment kit (EXP-01..EXP-09 test mods, EXP-04 inside EXP-03; EXP-09 shader part in P00c) for the owner",
+      "title": "Build the in-game experiment kit (EXP-01..03, 05..09; EXP-04 inside EXP-03 20k per DEC-030) for the owner",
       "agent": "pipeline-engineer",
       "scope": [
         "tools/experiments/**",
@@ -29,10 +29,10 @@
       "depends_on": [
         "P00"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "branch": "wu/P00b",
-      "attempts": 0,
-      "notes": ""
+      "attempts": 1,
+      "notes": "EXP-09 consumes P00c variant manifest assets/gfx/FX/experiments/EXP-09/variants.json (interface contract in docs/logs/P00b.md)"
     },
     {
       "id": "P00c",
@@ -40,17 +40,17 @@
       "title": "EXP-09 edge-look variants: camera define overrides + minimal shader fade",
       "agent": "gfx-engineer",
       "scope": [
-        "assets/gfx/**",
+        "assets/gfx/FX/**",
         "assets/common/defines/**",
         "tests/gfx/**"
       ],
       "depends_on": [
         "P00"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "branch": "wu/P00c",
-      "attempts": 0,
-      "notes": ""
+      "attempts": 1,
+      "notes": "parallel with P00b; delivers define variants + optional shader-fade patch spec, never vanilla file copies"
     }
   ]
 }
