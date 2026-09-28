@@ -1,0 +1,62 @@
+{
+  "experiment": "EXP-09",
+  "work_unit": "P00c",
+  "canvas": {"width": 5120, "height": 2304, "lon0": 10.9, "lat_min": -60.0, "lat_max": 90.0, "margin_rows": 14.3},
+  "install": {
+    "defines": "copy each listed .lua into the test mod's common/defines/ under its own basename (zz_* sorts after vanilla 00_*.lua and 01_*.lua)",
+    "shader_patches": "apply the listed patch specs in list order (entries in file order) to the vanilla file named in 'file' (read from $HOI4_GAME_DIR) and ship the result at the same relative path in the test mod. offglobe_mask.patch.json only defines helpers (behaviour 'none') and always comes first."
+  },
+  "variants": [
+    {
+      "id": "a",
+      "label": "EXP-09a baseline",
+      "changes": "Baseline: nothing from P00c. Only P00b's off-globe filler (lake provinces, heightmap 89, ocean colormap tone). Vanilla camera defines (outside-map distance 200/200, max height 3000), vanilla shaders.",
+      "defines": [],
+      "shader_patches": []
+    },
+    {
+      "id": "b",
+      "label": "EXP-09b camera edge limit",
+      "changes": "vs a: NGraphics.CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM 200 -> 15 (the 14.3-row off-globe margin rounded up), so the camera stops at the 90N pole line / 60S cut instead of drifting ~186 rows into empty space.",
+      "defines": ["assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua"],
+      "shader_patches": []
+    },
+    {
+      "id": "c",
+      "label": "EXP-09c edge limit + max height",
+      "changes": "vs b: adds NFrontend.CAMERA_MAX_HEIGHT 3000 -> 2400 (first calibration point; less empty space above/below the map at full zoom-out, at the cost of a smaller overview). Everything else as b.",
+      "defines": [
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua",
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_max_height.lua"
+      ],
+      "shader_patches": []
+    },
+    {
+      "id": "d",
+      "label": "EXP-09d c + off-globe ice suppression",
+      "changes": "vs c: one shader behaviour in gfx/FX/pdxwater.shader - no winter sea ice on water outside the Equal Earth outline (8-px band). The outline is computed analytically in the shader (helpers in offglobe_mask, no visible effect of their own) and only on a 5120x2304 map. Nothing else changes: no darkening, no geometry, no picking change. Compare with c in screenshot 6.",
+      "defines": [
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua",
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_max_height.lua"
+      ],
+      "shader_patches": [
+        "assets/gfx/FX/experiments/EXP-09/offglobe_mask.patch.json",
+        "assets/gfx/FX/experiments/EXP-09/offglobe_noice.patch.json"
+      ]
+    },
+    {
+      "id": "e",
+      "label": "EXP-09e d + far-zoom off-globe darkening",
+      "changes": "vs d: one more shader behaviour - water outside the Equal Earth outline darkens to 45 % of its own colour over a 40-px band, fading in with camera height 400 -> 1500 (no effect when zoomed in). Compare with d in screenshots 1-3 and 7.",
+      "defines": [
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua",
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_max_height.lua"
+      ],
+      "shader_patches": [
+        "assets/gfx/FX/experiments/EXP-09/offglobe_mask.patch.json",
+        "assets/gfx/FX/experiments/EXP-09/offglobe_noice.patch.json",
+        "assets/gfx/FX/experiments/EXP-09/offglobe_fade.patch.json"
+      ]
+    }
+  ]
+}

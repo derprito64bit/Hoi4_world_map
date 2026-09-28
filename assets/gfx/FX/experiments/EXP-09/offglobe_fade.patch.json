@@ -1,0 +1,10 @@
+[
+  {
+    "file": "gfx/FX/pdxwater.shader",
+    "anchor": "return float4( vOut, 1.0f - waterShore );",
+    "mode": "before",
+    "behaviour": "offglobe-far-zoom-darkening",
+    "purpose": "off-globe water darkens to 45 % of its own colour over a smooth 40-px band outside the outline; none below camera height 400, full from 1500. Last colour step before output. Needs offglobe_mask.patch.json first.",
+    "text": "// EXP-09 (P00c): far-zoom off-globe fade (colour only; alpha untouched).\n\t\t\tfloat vEEFade = EE_OffGlobeWeight( Input.pos.xz, 40.0 );\n\t\t\tvEEFade = vEEFade * vEEFade * ( 3.0 - 2.0 * vEEFade );\n\t\t\tvEEFade *= cam_distance( 400.0, 1500.0 );\n\t\t\tvOut = lerp( vOut, vOut * 0.45, vEEFade );\n\t\t\t"
+  }
+]

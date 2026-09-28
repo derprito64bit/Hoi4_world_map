@@ -1,0 +1,10 @@
+[
+  {
+    "file": "gfx/FX/pdxwater.shader",
+    "anchor": "vIceFade *= vMapLimitFade;",
+    "mode": "after",
+    "behaviour": "offglobe-ice-suppression",
+    "purpose": "no winter sea ice on the off-globe filler (8-px band outside the outline). Needs offglobe_mask.patch.json first.",
+    "text": "\n\t\t\t// EXP-09 (P00c): no sea ice outside the globe outline.\n\t\t\tvIceFade *= 1.0 - EE_OffGlobeWeight( vPos, 8.0 );"
+  }
+]
