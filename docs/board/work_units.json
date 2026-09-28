@@ -51,6 +51,23 @@
       "branch": "wu/P00c",
       "attempts": 2,
       "notes": "parallel with P00b; delivers define variants + optional shader-fade patch spec, never vanilla file copies; r1 d933657: validator GREEN, review 0P0/1P1/4P2, triage FIX (P1-02 ice screenshot, P1-03 split variant d) -> r2; r2 6ff3a01: tests 36/36, review 0P0/0P1/4P2 (logged) -> merged"
+    },
+    {
+      "id": "P00b-f1",
+      "phase": "P00",
+      "title": "install.py: recognise own .mod files after the launcher rewrites them (marker line stripped)",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/experiments/**",
+        "tests/experiments/**"
+      ],
+      "depends_on": [
+        "P00b"
+      ],
+      "status": "in_progress",
+      "branch": "wu/P00b-f1",
+      "attempts": 1,
+      "notes": "owner finding 2026-09-28 18:46: launcher rewrote mod/p00b_EXP-01-UK-A.mod without the # marker; --uninstall refuses (exit 2)"
     }
   ]
 }
