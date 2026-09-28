@@ -1,0 +1,23 @@
+[
+  {
+    "file": "gfx/FX/pdxwater.shader",
+    "anchor": "float3 ApplyIce(",
+    "mode": "before",
+    "purpose": "define the EE_* off-globe helper functions ahead of their first use",
+    "text": "// ---- EXP-09 (Equal Earth HOI4 map, P00c) begin: off-globe colour fade. Colour/opacity only, no geometry change. ----\n\t\t// Canvas = ee_project.py Canvas(5120, 2304, lon0=10.9, lat 60S..90N); world x = column, world z = rows counted from the bottom.\n\t\tfloat EE_EqEarthY( float vT )\n\t\t{\n\t\t\tfloat vT2 = vT * vT;\n\t\t\tfloat vT6 = vT2 * vT2 * vT2;\n\t\t\treturn vT * ( 1.340264 - 0.081106 * vT2 + vT6 * ( 0.000893 + 0.003796 * vT2 ) );\n\t\t}\n\t\tfloat EE_EqEarthDY( float vT )\n\t\t{\n\t\t\tfloat vT2 = vT * vT;\n\t\t\tfloat vT6 = vT2 * vT2 * vT2;\n\t\t\treturn 1.340264 - 0.243318 * vT2 + vT6 * ( 0.006251 + 0.034164 * vT2 );\n\t\t}\n\t\t// Map pixels outside the Equal Earth outline (<= 0 on the globe): horizontal for the curved sides,\n\t\t// vertical for the 90N pole line and the 60S cut. Exact sign, approximate magnitude (used for a soft band only).\n\t\tfloat EE_OffGlobeDistance( float2 vWorldXZ )\n\t\t{\n\t\t\tfloat vScale = 945.82563;     // px per radian = 5120 / ( 2 * 2.7066300 )\n\t\t\tfloat vZEquator = 1043.67368; // world z of the equator\n\t\t\tfloat vYTop = 1.31736276;     // Equal Earth y at 90N\n\t\t\tfloat vYBot = -1.08830084;    // Equal Earth y at 60S\n\t\t\tfloat vY = ( vWorldXZ.y - vZEquator ) / vScale;\n\t\t\tfloat vOutY = max( vY - vYTop, vYBot - vY ) * vScale;\n\t\t\tfloat vYc = clamp( vY, vYBot, vYTop );\n\t\t\tfloat vT = vYc / 1.340264;\n\t\t\tvT -= ( EE_EqEarthY( vT ) - vYc ) / EE_EqEarthDY( vT );\n\t\t\tvT -= ( EE_EqEarthY( vT ) - vYc ) / EE_EqEarthDY( vT );\n\t\t\tvT -= ( EE_EqEarthY( vT ) - vYc ) / EE_EqEarthDY( vT );\n\t\t\tfloat vHalfWidth = vScale * 3.14159265 * cos( vT ) / ( 0.86602540 * EE_EqEarthDY( vT ) );\n\t\t\tfloat vCol = frac( vWorldXZ.x / MAP_SIZE_X ) * MAP_SIZE_X;\n\t\t\tfloat vOutX = abs( vCol - 0.5 * MAP_SIZE_X ) - vHalfWidth;\n\t\t\treturn max( vOutX, vOutY );\n\t\t}\n\t\t// 0 on the globe, ramps to 1 over vBandPx outside it. Always 0 on any other map size, so vanilla-sized maps are untouched.\n\t\tfloat EE_OffGlobeWeight( float2 vWorldXZ, float vBandPx )\n\t\t{\n\t\t\tfloat vCanvas = step( abs( MAP_SIZE_X - 5120.0 ), 0.5 ) * step( abs( MAP_SIZE_Y - 2304.0 ), 0.5 );\n\t\t\treturn saturate( EE_OffGlobeDistance( vWorldXZ ) / vBandPx ) * vCanvas;\n\t\t}\n\t\t// Off-globe water darkens towards 45 % of its own colour: nothing below camera height 400, full from 1500 up,\n\t\t// over a smooth 40-px band outside the outline. Close up the filler stays indistinguishable from open sea.\n\t\tfloat3 EE_ApplyOffGlobeFade( float3 vColor, float2 vWorldXZ )\n\t\t{\n\t\t\tfloat vFade = EE_OffGlobeWeight( vWorldXZ, 40.0 );\n\t\t\tvFade = vFade * vFade * ( 3.0 - 2.0 * vFade );\n\t\t\tvFade *= cam_distance( 400.0, 1500.0 );\n\t\t\treturn lerp( vColor, vColor * 0.45, vFade );\n\t\t}\n\t\t// ---- EXP-09 end ----\n\n\t\t"
+  },
+  {
+    "file": "gfx/FX/pdxwater.shader",
+    "anchor": "vIceFade *= vMapLimitFade;",
+    "mode": "after",
+    "purpose": "no winter sea ice on the off-globe filler",
+    "text": "\n\t\t\t// EXP-09 (P00c): no sea ice outside the globe outline.\n\t\t\tvIceFade *= 1.0 - EE_OffGlobeWeight( vPos, 8.0 );"
+  },
+  {
+    "file": "gfx/FX/pdxwater.shader",
+    "anchor": "return float4( vOut, 1.0f - waterShore );",
+    "mode": "before",
+    "purpose": "far-zoom darkening of the off-globe filler (last colour step before output)",
+    "text": "// EXP-09 (P00c): far-zoom off-globe fade.\n\t\t\tvOut = EE_ApplyOffGlobeFade( vOut, Input.pos.xz );\n\t\t\t"
+  }
+]

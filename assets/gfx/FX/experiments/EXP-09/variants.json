@@ -1,0 +1,45 @@
+{
+  "experiment": "EXP-09",
+  "work_unit": "P00c",
+  "canvas": {"width": 5120, "height": 2304, "lon0": 10.9, "lat_min": -60.0, "lat_max": 90.0, "margin_rows": 14.3},
+  "install": {
+    "defines": "copy each listed .lua into the test mod's common/defines/ under its own basename (zz_* sorts after vanilla 00_*.lua and 01_*.lua)",
+    "shader_patches": "apply each listed patch spec to the vanilla file named in 'file' (read from $HOI4_GAME_DIR), entries in list order, and ship the result at the same relative path in the test mod"
+  },
+  "variants": [
+    {
+      "id": "a",
+      "label": "EXP-09a baseline",
+      "changes": "Baseline: nothing from P00c. Only P00b's off-globe filler (lake provinces, heightmap 89, ocean colormap tone). Vanilla camera defines (outside-map distance 200/200, max height 3000), vanilla shaders.",
+      "defines": [],
+      "shader_patches": []
+    },
+    {
+      "id": "b",
+      "label": "EXP-09b camera edge limit",
+      "changes": "vs a: NGraphics.CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM 200 -> 15 (the 14.3-row off-globe margin rounded up), so the camera stops at the 90N pole line / 60S cut instead of drifting ~186 rows into empty space.",
+      "defines": ["assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua"],
+      "shader_patches": []
+    },
+    {
+      "id": "c",
+      "label": "EXP-09c edge limit + max height",
+      "changes": "vs b: adds NFrontend.CAMERA_MAX_HEIGHT 3000 -> 2400 (first calibration point; less empty space above/below the map at full zoom-out, at the cost of a smaller overview). Everything else as b.",
+      "defines": [
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua",
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_max_height.lua"
+      ],
+      "shader_patches": []
+    },
+    {
+      "id": "d",
+      "label": "EXP-09d c + off-globe shader fade",
+      "changes": "vs c: adds a colour-only patch to gfx/FX/pdxwater.shader. Outside the Equal Earth outline (computed analytically in the shader, active only when the map is exactly 5120x2304) the water darkens to 45 % of its own colour over a 40-px band, fading in with camera height 400 -> 1500 (no effect when zoomed in), and sea ice is suppressed there. Land, borders, picking and all geometry unchanged.",
+      "defines": [
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_outside_map.lua",
+        "assets/common/defines/experiments/EXP-09/zz_exp09_camera_max_height.lua"
+      ],
+      "shader_patches": ["assets/gfx/FX/experiments/EXP-09/offglobe_fade.patch.json"]
+    }
+  ]
+}
