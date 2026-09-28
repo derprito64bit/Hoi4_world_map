@@ -17,7 +17,7 @@ Objective → Scope/Frozen → Context → Constraints (hard / preference / disc
 | `P07-strategic-regions.md` | regions + weather + region localisation | G4 | — |
 | `P08-adjacencies.md` | straits, canals, impassable, seam links, rules | P07 | — |
 | `P09-rasters.md` | terrain, rivers, heightmap final, normal, trees, cities, colormaps | P08 | — |
-| `P10-positions-supply.md` | buildings, unitstacks, airports, rocketsites, weatherpositions, supply nodes, railways | P09 | — |
+| `P10-positions-supply.md` | buildings (1.19.3 types), unitstacks, weatherpositions, supply nodes, railways | P09 | — |
 | `P11-packaging.md` | descriptor, compat overrides + assets in place, country history for new tags, localisation completeness, `--install` | P13b, P14 | G5 |
 | `P13-vanilla-compat.md` | P13a vanilla state/province mapping (before P06); P13b script remapping (after P10) | G3 / P10 | — |
 | (P14, prompt written when due) | rendering: camera defines, shader edge treatment, constants.fxh (gfx-engineer) | P13b | — |

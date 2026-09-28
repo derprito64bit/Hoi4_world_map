@@ -3,29 +3,30 @@
 ## 1. What a state is
 A state is the unit of ownership, cores, industry (building slots), manpower,
 resources, supply and peace deals. It is a set of **land** provinces (plus
-optionally lakes) inside **one** strategic region. Vanilla: 969 states,
-provinces per state p10 2 / median 9 / p90 21 / max 70; 66 single-province
-states; 17 `impassable = yes` states (Sahara, Amazon, Himalaya-type).
+optionally lakes) inside **one** strategic region. Vanilla 1.19.3: 1,081 states
+(ids 1..1081, no gaps), provinces per state p10 2 / median 8 / p90 19 / max 70;
+68 single-province states; 21 `impassable = yes` states (Sahara, Amazon,
+Himalaya-type), each with `force_link_ownership_to`.
 
 ## 2. Field semantics and how to set each one
 | Field | Rule |
 |---|---|
-| `id` | 1..S contiguous. File `<id>-<Name>.txt`. Never reuse a deleted id for a different place in the same release; compact ids only in a dedicated renumber commit. |
+| `id` | 1..S contiguous. File `<id>-<Name>.txt` (`<id> - <Name>.txt` also loads). Never reuse a deleted id for a different place in the same release; compact ids only in a dedicated renumber commit. |
 | `name` | `"STATE_<id>"` + localisation. Name = the historical name at the start date (e.g. "Königsberg", "Bombay Presidency"), not today's. |
-| `manpower` | **Total population** of the state at the start date (vanilla median 889,962, max 52,963,300). Source: census nearest the start date; if only a country total exists, distribute by a gridded population dataset (HYDE / GPW backcast) share. Record method in provenance. |
-| `state_category` | From population + urbanisation (table below). Category sets building slots. |
+| `manpower` | **Total population** of the state at the start date (vanilla 1.19.3 median 820,000, max 45,365,364). Source: census nearest the start date; if only a country total exists, distribute by a gridded population dataset (HYDE / GPW backcast) share. Record method in provenance. |
+| `state_category` | From population + urbanisation (table below). Category sets building slots. Write it **once** (4 vanilla states write it twice; which wins is undefined — validator `STATE_CATEGORY_DUP`). |
 | `resources` | Only where a documented deposit was *producing or known* by the start date. Resource types in 1.19: oil, aluminium, rubber, tungsten, steel, chromium **and coal** (added with No Compromise, No Surrender / 1.17, used for the energy system that limits factories — P00 confirms the exact key list from `common/resources`). Real 1936 deposits (owner decision); report global totals vs. vanilla 1.19 per resource. |
 | `history.owner` / `add_core_of` / `controller` | Owner from the start-date political boundary dataset (CShapes 2.0 for sovereign states). Cores: current owner + historically claimed nations per design doc; never guess — mark `UNRESOLVED`. |
-| `victory_points` | Province id + value. Vanilla value distribution: 1 (534), 3 (207), 5 (181), 2 (79), 10 (99), 15 (33), 20 (33), 25 (7), 30 (15), 40 (5), 50 (5). Capitals of great powers 30–50; national capitals 10–30; major cities 3–10; towns 1–2. The VP province must be the province containing the city's true location. |
-| `buildings` | `infrastructure` 0–5 (vanilla: 0 ×11, 1 ×221, 2 ×383, 3 ×273, 4 ×67, 5 ×1); factories ≤ slots; `N = { naval_base = k }` only on coastal province N. |
-| `impassable = yes` | Only for genuinely impassable terrain states (deserts, rainforest cores, high mountain massifs). Combine with `force_link_ownership_to` if a neighbour should own it automatically. |
+| `victory_points` | Province id + value (integer; vanilla also writes `30.0`). Vanilla 1.19.3 distribution (1,500 entries): 1 (710), 3 (224), 5 (196), 2 (146), 10 (113), 15 (38), 20 (35), 30 (14), 25 (11), 50 (5), 40 (4), 8 (2), 12 (1), 13 (1). Capitals of great powers 30–50; national capitals 10–30; major cities 3–10; towns 1–2. The VP province must be the province containing the city's true location. |
+| `buildings` | `infrastructure` 0–5 (vanilla 1.19.3: 0 ×18, 1 ×293, 2 ×411, 3 ×263, 4 ×64, 5 ×1); factories ≤ slots; `N = { naval_base = k }` only on coastal province N. Other 1.19.3 provincial keys: bunker, coastal_bunker, naval_supply_hub, naval_headquarters, naval_facility, land_facility, dam, dam_mountain, `landmark_*` — set only with a historical source (dams, landmarks) or leave to focus/decision scripts. |
+| `impassable = yes` | Only for genuinely impassable terrain states (deserts, rainforest cores, high mountain massifs). Pair with `force_link_ownership_to = <state id>` (all 21 vanilla impassable states do) so it follows its neighbour's owner. `impassable_ignored_links` exists (1 vanilla state) — semantics unverified, do not use without a test. |
 | `local_supplies` | 0.0 default. |
 
-Category thresholds (starting point; tune with the vanilla distribution: rural 272, town 196, pastoral 144, city 113, wasteland 64, large_city 41, small_island 40, large_town 32, tiny_island 24, enclave 18, metropolis 17, megalopolis 8):
+Category thresholds (starting point; tune with the vanilla 1.19.3 distribution: rural 321, town 224, pastoral 155, city 115, wasteland 66, small_island 46, large_city 40, large_town 40, tiny_island 25, enclave 19, metropolis 19, megalopolis 8, large_island 3):
 | Condition (start-date) | Category |
 |---|---|
 | uninhabited or < 5 inh/km² and no city > 20k | wasteland (0 slots) |
-| island state, pop < 50k | tiny_island (0) · < 500k small_island (1) |
+| island state, pop < 50k | tiny_island (0) · < 500k small_island (1) · larger island states that aren't urban → large_island (3, new in 1.19.x; vanilla uses it 3 times — threshold is ours, tune after P03) |
 | enclave/exclave micro-territory (e.g. treaty ports) | enclave (0) |
 | predominantly herding/sparse, < 25 inh/km² | pastoral (1) |
 | agricultural, largest city < 100k | rural (2) |
@@ -71,7 +72,7 @@ Confidence `low` or `UNRESOLVED` states are listed in the phase report; a state 
 4. Re-evaluate category, infrastructure, resources, VPs (VPs follow their province).
 5. Move provincial buildings of moved provinces from S's block to T's.
 6. `map/buildings.txt`: lines with state S whose coordinates fall inside T's provinces → change state id to T; add missing state-building positions for T (nudger "generate" or scripted placement inside T).
-7. `airports.txt`, `rocketsites.txt`: add `T={province}`.
+7. (1.19.x) `airports.txt` / `rocketsites.txt` no longer exist; T's `air_base` and `rocket_site_spawn` positions are the `buildings.txt` lines from step 6.
 8. Localisation `STATE_T`. Any scripts referencing S that should now include T (focuses, decisions, events, `history/countries` capitals, OOB locations) → grep and update.
 9. Validator → 0 new errors.
 ### 4.2 Merge T into S

@@ -4,7 +4,7 @@ Evidence: **[V]** = observed in vanilla 1.14.1 files; **[S]** = CWTools schema;
 **[C]** = community docs (Paradox wiki via search snippets) — verify in game.
 Paths are relative to the mod root.
 
-Format evidence: 1.14.1 vanilla files [V] and a mod built for **1.19.3** (checked 2026-09-28: all map files parse with 0 validator errors, same columns and headers) — formats are unchanged 1.14 → 1.19.3 for everything below unless noted.
+Format evidence: 1.14.1 vanilla files [V] and a mod built for **1.19.3** (checked 2026-09-28: all map files parse with 0 validator errors, same columns and headers) — formats are unchanged 1.14 → 1.19.3 for everything below unless noted. **Re-measured on vanilla 1.19.3 (P00, 2026-09-27):** changes are marked "1.19.3" inline — buildings.txt type names, legacy airports/rocketsites, weatherpositions sizes, new state keys and categories, the 4th adjacency pattern.
 
 ## map/default.map  [V]
 Points the engine at every map file. Vanilla content (keep file names unless you have a reason):
@@ -65,14 +65,15 @@ Each name needs localisation (vanilla keys are the names themselves in `*_l_engl
 ## map/adjacencies.csv  [V][C]
 Header (required, first line):
 `From;To;Type;Through;start_x;start_y;stop_x;stop_y;adjacency_rule_name;Comment`
-Terminator (required, last line): `-1;-1;;-1;-1;-1;-1;-1;-1`
+Terminator (required): `-1;-1;;-1;-1;-1;-1;-1;-1` — in 1.19.3 vanilla it is followed by 2 blank lines and a `#` comment line, so trailing blanks/comments after it are fine.
 Blank lines and `#` comment lines between rows are accepted (1.19.3 mod). Types seen: `sea`, `impassable`, empty, `land` (1.19.3 mod); a strait may pass through a **lake** province (1.19.3 mod).
 
 | Pattern (vanilla count) | From/To | Type | Through | Meaning |
 |---|---|---|---|---|
-| Strait (140) | land, land | `sea` | **sea** province crossed | army can cross; blocked if the sea is enemy-controlled |
+| Strait (140; 1.19.3: 148) | land, land | `sea` | **sea** province crossed | army can cross; blocked if the sea is enemy-controlled |
 | Canal (3: Panama, Kiel, Suez) | **sea, sea** | `sea` | **land** province the canal runs through | ships pass; gated by `adjacency_rule_name` |
-| Blocked border (70) | land, land | `impassable` | `-1` | removes a pixel adjacency (e.g. across a mountain wall) |
+| Blocked border (70; 1.19.3: 93) | land, land | `impassable` | `-1` | removes a pixel adjacency (e.g. across a mountain wall) |
+| Rule on a touching sea pair (1.19.3: 7 — Gibraltar N/S, Øresund, Bosphorus, Dardanelles, Hormuz, Otranto) | **sea, sea**, already pixel-adjacent | *(empty)* | `-1` | only attaches `adjacency_rule_name` (strait control); proves nothing about linking non-touching seas (EXP-01) |
 | Land link | land, land | *(empty)* | -1 | adds adjacency between non-touching land provinces [C] |
 | `river`, `large_river` | land, land | as named | -1 | [C] forces river-crossing type; unobserved in vanilla |
 
@@ -132,6 +133,8 @@ state={
 			industrial_complex = 1
 			air_base = 1
 			3838 = { naval_base = 3 }   # provincial buildings keyed by province id
+			# 1.19.3 provincial keys: naval_base, bunker, coastal_bunker, naval_supply_hub,
+			# naval_headquarters, naval_facility, land_facility, dam, dam_mountain, landmark_*
 		}
 		add_core_of = FRA
 		1939.1.1 = { owner = GER }    # dated blocks allowed
@@ -139,10 +142,12 @@ state={
 	provinces={ 3838 9851 11804 }
 	local_supplies=0.0              # optional, 0..20
 	impassable = yes                # optional
+	force_link_ownership_to = 123   # 1.19.3: on all 21 impassable states — owner follows state 123
+	impassable_ignored_links = { }  # 1.19.3: seen once; semantics unverified (Tier 3)
 	buildings_max_level_factor = 1.0  # optional
 }
 ```
-See 03-states.md for semantics. Vanilla file names are `<id>-<Name>.txt`, ASCII.
+See 03-states.md for semantics. Vanilla file names are `<id>-<Name>.txt`, ASCII; 1.19.3 also ships `<id> - <Name>.txt` and `<id> -<Name>.txt` (all load). VP values may be written as floats (`30.0`). Declare `state_category` once — 4 vanilla states declare it twice and which wins is unknown.
 
 ## common/state_category/<name>.txt  [V]
 ```
@@ -153,22 +158,29 @@ state_categories={
 	}
 }
 ```
-Vanilla slots: enclave 0, tiny_island 0, wasteland 0, pastoral 1, small_island 1, rural 2, town 4, large_town 5, city 6, large_city 8, metropolis 10, megalopolis 12.
+Vanilla slots: enclave 0, tiny_island 0, wasteland 0, pastoral 1, small_island 1, **large_island 3 (new in 1.19.x)**, rural 2, town 4, large_town 5, city 6, large_city 8, metropolis 10, megalopolis 12. `large_island`, `small_island` and `tiny_island` also carry a `buildings_max_level = { naval_base = 8 air_base = 6 }`-style block.
 
-## map/buildings.txt  [V] (7 columns, unchanged in the 1.19.3 mod)
+## map/buildings.txt  [V] (7 columns; type names re-measured on vanilla 1.19.3)
 One line per building **model position**: `state_id;building;x;y;z;rotation;extra`
 - `x` = pixel column, `y` = height (~9.5 = sea level), `z` = pixel row **counted from the bottom** of the image, rotation in radians.
-- `extra`: for `naval_base` = the **sea** province the port faces; for `floating_harbor` = the land province it attaches to; otherwise `0`.
-- Vanilla multiplicities: state buildings (arms_factory, industrial_complex) 6 lines per state; anti_air 3; air_base, fuel_silo, nuclear_reactor, rocket_site, synthetic_refinery 1 per state; bunker and supply_node ~1 per land province; naval_base and coastal_bunker 1 per coastal land province.
+- `extra`: for `naval_base_spawn` = the **sea** province the port faces; for `floating_harbor` = the land province it attaches to; otherwise `0`.
+- 1.19.3 type set and multiplicities (08-vanilla-baseline.md has counts):
+  - per state: arms_factory ×6, industrial_complex ×6, anti_air_building ×3; air_base, synthetic_refinery, radar_station, fuel_silo, `stronghold_network`, `nuclear_reactor_spawn`, `rocket_site_spawn` ×1
+  - per land province: bunker, supply_node, `special_project_facility_spawn`
+  - per coastal land province: `naval_base_spawn` (column 7 = sea), coastal_bunker, `naval_supply_hub`, `naval_headquarters`, floating_harbor (column 7 = land)
+  - per coastal state: dockyard
+  - specific states only: `dam_spawn`, `landmark_spawn`, `locks_spawn`
+- Older names (1.14.1): `naval_base`, `nuclear_reactor`, `rocket_site` — do not emit them for 1.19.x.
 - Generated by the nudger (07-validation.md). Missing positions → models not drawn, or crashes when the building is built (naval base / floating harbour [C]).
 
 ## map/unitstacks.txt  [V]
 `province;type;x;y;z;rotation;offset` — up to 39 position types (0–38) per province: unit models, VP marker, labels, combat positions, naval positions for sea provinces. Generated by the nudger; 10 MB in vanilla.
 
 ## map/weatherpositions.txt  [V]
-`strategic_region_id;x;y;z;size` (`small`/`medium`/`large`) — weather effect anchors, several per region.
+`strategic_region_id;x;y;z;size` (`small` / `big` in 1.19.3: 136 / 452 of 588 lines) — weather effect anchors, several per region.
 
-## map/airports.txt / map/rocketsites.txt  [V][S]
+## map/airports.txt / map/rocketsites.txt  — LEGACY (absent in 1.19.3)
+Vanilla 1.19.3 ships neither file; air base and rocket site positions come from `buildings.txt` (`air_base`, `rocket_site_spawn`). Do not generate them. Old 1.14.1 format for reference:
 ```
 1={3838 }      # state_id={ province }  — where the airbase / rocket site model sits
 ```

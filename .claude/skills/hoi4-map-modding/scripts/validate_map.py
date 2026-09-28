@@ -415,8 +415,10 @@ def main():
         if sid in states:
             R.err("STATE_DUP_ID", f"state id {sid} defined twice ({os.path.basename(f)})")
         pv = [int(v) for v in (brace_block(body, "provinces") or "").split()]
-        cat = re.search(r"state_category\s*=\s*\"?([a-z_]+)", body)
-        cat = cat.group(1) if cat else None
+        cat_all = re.findall(r"\bstate_category\s*=\s*\"?([a-z_]+)", body)
+        if len(cat_all) > 1:
+            R.warn("STATE_CATEGORY_DUP", f"state {sid}: state_category set {len(cat_all)} times ({', '.join(cat_all)}); which one wins is undefined", state=sid)
+        cat = cat_all[0] if cat_all else None
         if cats and cat not in cats:
             R.err("STATE_CATEGORY", f"state {sid}: unknown state_category '{cat}'", state=sid)
         if not re.search(r"\bmanpower\s*=", body):
@@ -519,14 +521,18 @@ def main():
                 continue
             if sid not in states:
                 bad_state.add(sid)
-            if s[1] == "naval_base":
-                sp = int(s[6])
+            # 1.19.x writes naval_base_spawn; naval_base is the older name (1.14.1 baseline)
+            if s[1] in ("naval_base_spawn", "naval_base"):
+                try:
+                    sp = int(float(s[6]))
+                except ValueError:
+                    sp = None
                 if typ.get(sp) != "sea":
                     bad_sea += 1
         if bad_state:
             R.err("BUILDINGS_BAD_STATE", f"buildings.txt references {len(bad_state)} undefined states", sample=sorted(bad_state)[:20])
         if bad_sea:
-            R.err("BUILDINGS_NAVAL_SEA", f"{bad_sea} naval_base lines lack a sea province in column 7")
+            R.err("BUILDINGS_NAVAL_SEA", f"{bad_sea} naval_base_spawn lines lack a sea province in column 7")
 
     # ------------------------------------------------------------------ rivers
     rv = find(root, van, "map/rivers.bmp")

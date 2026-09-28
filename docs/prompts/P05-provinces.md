@@ -14,7 +14,7 @@ Review: code-reviewer, visual-qa (provinces + seam + off-globe previews), valida
 
 ## 3. CONTEXT
 - Algorithm and rules: skill `references/02-provinces.md` §2, §4 (density + border rule), §5, §6; `references/06-equal-earth.md` §3–4 (off-globe filler = lake provinces in dedicated regions unless EXP-06 says otherwise; seam).
-- Budget and limits: PROJECT_SPEC §2 (`PROVINCE_BUDGET` as confirmed by EXP-03; `BBOX_MAX` from EXP-02; 8-px floor from EXP-04).
+- Budget and limits: PROJECT_SPEC §2 (`PROVINCE_BUDGET` as confirmed by EXP-03; `BBOX_MAX` from EXP-02; 8-px floor from EXP-04, run inside the EXP-03 kit).
 - Inputs: `build/masks/surface.npy`, state polygons (skeleton or wave), overlay lines, VP/port/capital seeds from state attributes.
 
 ## 4. CONSTRAINTS

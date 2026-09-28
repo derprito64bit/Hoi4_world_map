@@ -40,7 +40,7 @@ Vanilla content hard-codes state and province ids. After replacing the map, thes
 - `history/units/*.txt` — division `location = <province>`, naval bases, air wings `<state> = { }`.
 - `common/national_focus/*`, `events/*`, `common/decisions/*`, `common/scripted_effects/*`, `common/scripted_triggers/*`, `common/on_actions/*`, `common/ai_strategy*/*`, `common/peace_conference/*`: `state = N`, `N = { ... }` state scopes, `owns_state`, `controls_state`, `transfer_state`, `province = N`.
 - `common/bookmarks/*`, `common/countries/*` (colours are fine), `common/unit_leader` / characters (no ids usually).
-- `map/buildings.txt`, `map/unitstacks.txt`, `map/airports.txt`, `map/rocketsites.txt`, `map/weatherpositions.txt`, `map/supply_nodes.txt`, `map/railways.txt`.
+- `map/buildings.txt`, `map/unitstacks.txt`, `map/weatherpositions.txt`, `map/supply_nodes.txt`, `map/railways.txt`. (`map/airports.txt` / `map/rocketsites.txt` are legacy — absent in 1.19.3; don't ship them.)
 Project strategy (owner decision: vanilla focus trees must keep working): **do not strip** — keep vanilla state IDs by anchoring them to the new state containing each vanilla state's main VP city, give new states higher IDs, and remap every vanilla reference at build time (effects on a split vanilla state → all child states; triggers → anchor or all children). Details: docs/PROJECT_SPEC.md §10 and the compat-engineer agent. Stubbing with `replace_path` is only a fallback for content the coverage report marks unmappable. Grep patterns for the audit: `\bstate\s*=\s*\d+`, `\b\d+\s*=\s*\{` inside `every_state`/`state` scopes, `capital\s*=\s*\d+`, `location\s*=\s*\d+`, `province\s*=\s*\d+`.
 
 ## 5. Licence hygiene
