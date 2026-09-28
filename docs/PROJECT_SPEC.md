@@ -31,7 +31,7 @@ Owner decisions are logged with dates in `to-check/` (one dated file per batch).
 | `MIN_PROVINCE_PX` | 30 target minimum (≈ 1,360 km²), 8 hard floor, islands ≥ 8 px enlarged only minimally | 02-provinces.md; owner: islands "only very slightly" enlarged |
 | `BBOX_MAX` | land 250 px, sea 180 px until EXP-02 measures the real limit | OPEN-4 |
 | `STATE_TARGET` | **≈ 1,800–2,500 states**, finer than vanilla 1.19's ≈ 1,081 | owner: "more fine-grained"; built from scratch — no other mod used as a source |
-| `COUNTRIES` | Tags present at start: entities that were sovereign **or de jure / nominally independent with their own government** in 1936 (e.g. Egypt, Iraq, Manchukuo, the Indochinese protectorates as the owner describes them). Colonies and princely states are **not** separate countries at start; they are map states of their colonial power and can be releasables. Plus historical releasable claimants with cores. Exact list confirmed per country by the fact-checker. | owner decisions DEC-008, DEC-018 |
+| `COUNTRIES` | Tags present at start: entities that were sovereign **or de jure / nominally independent with their own government** in 1936 (e.g. Egypt, Iraq, Manchukuo, the Indochinese protectorates as the owner describes them). Colonies and princely states are **not** separate countries at start; they are map states of their colonial power and can be releasables. Plus historical releasable claimants with cores. Exact list confirmed per country by the fact-checker, which first resolves the calibration cases in `data/countries/status_calibration.csv` (e.g. Belgian Congo, FC-001). | owner decisions DEC-008, DEC-018 (confirmed 2026-09-28) |
 | `MANPOWER` | census population nearest 1936 (+ gridded share where census detail is missing) | owner decision |
 | `RESOURCES` | real 1936 deposits/production (cited) | owner decision |
 | `RIVERS` | dense (well beyond vanilla's major-rivers set) | owner decision |
@@ -109,7 +109,7 @@ HOI4 renders the map as a flat, heightmapped plane that wraps horizontally; it h
 - `gfx/FX/constants.fxh` map constants (`MAP_NUM_TILES`, `TEXELS_PER_TILE`, `WATER_HEIGHT`), which may have to match the new canvas (P00 measures; EXP-08 tests).
 Goal: moving around the map feels as seamless as vanilla — no hard rectangle corners visible at normal zoom, no seam artefact at the wrap.
 
-## 12. Build strategy: walking skeleton first (proposal, Q-002)
+## 12. Build strategy: walking skeleton first (approved by the owner 2026-09-28)
 The fastest way to a correct map is to make the **whole pipeline run end-to-end early**, then refine:
 1. **Skeleton (after P03):** one state per 1936 sovereign country / colony (from the start-date sovereignty dataset), provinces from the density model only, placeholder regions/weather/rasters. Run P05–P11 in "skeleton mode" → the owner loads a playable (ugly) map within the first weeks → EXP results and in-game errors surface early.
 2. **Refinement waves:** per-country state-builder WUs (P04) replace skeleton states country by country, in parallel batches of up to 6, each through the full loop (validator → fact-checker → history-auditor → visual-qa → triage). Province borders that must move are handled by **splitting** provinces (the larger part keeps its ID, the rest get new appended IDs) — IDs are never renumbered or reused.
