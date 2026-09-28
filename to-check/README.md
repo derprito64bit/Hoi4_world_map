@@ -15,3 +15,5 @@ Status values: `OPEN`, `DONE (date, evidence)`, `CHANGED (see <file>#<id>)`, `DR
 | [2026-09-27_decisions-and-checks.md](2026-09-27_decisions-and-checks.md) | 2026-09-27 | first batch of owner decisions, EXP-01..07, open checks |
 | [2026-09-28_rendering-countries-canvas.md](2026-09-28_rendering-countries-canvas.md) | 2026-09-28 | countries rule, 5120×2304 canvas, rendering limits, EXP-08/09, experiment limitations, new agents, build strategy |
 | [2026-09-28_self-audit.md](2026-09-28_self-audit.md) | 2026-09-28 | self-audit of prompts/skill/agents against 1.19.3 evidence: 15 fixes, 4 items still unverified |
+| [2026-09-27_local-setup.md](2026-09-27_local-setup.md) | 2026-09-27 (local clock, written after the 09-28 files) | P00-pre local Windows setup, CHK-010..013 |
+| [2026-09-27_p00-baseline.md](2026-09-27_p00-baseline.md) | 2026-09-27 (local clock, newest) | P00 results: 1.19.3 baseline, engine limits, renderer facts, Q-003..Q-008 for Gate G0 |
