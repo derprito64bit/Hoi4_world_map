@@ -12,15 +12,15 @@
         "to-check/**"
       ],
       "depends_on": [],
-      "status": "todo",
+      "status": "done",
       "branch": "main",
       "attempts": 0,
-      "notes": "overwatch's own read-only phase; commits the log on main"
+      "notes": "overwatch's own read-only phase; log committed d982fee; Gate G0 answered 2026-09-28 (Q-003..Q-008), S1\u2013S11 applied"
     },
     {
       "id": "P00b",
       "phase": "P00",
-      "title": "Build the in-game experiment kit (EXP-01..EXP-09 test mods; EXP-09 shader part in P00c) for the owner",
+      "title": "Build the in-game experiment kit (EXP-01..EXP-09 test mods, EXP-04 inside EXP-03; EXP-09 shader part in P00c) for the owner",
       "agent": "pipeline-engineer",
       "scope": [
         "tools/experiments/**",

@@ -37,7 +37,7 @@ The owner-facing versions of these tests are EXP-01..07 in `to-check/2026-09-27_
 | OPEN-3 | Off-globe fill as lake provinces — any rendering/pathing side effects? | lakes in "off-globe" regions | load, pan the map edges, check AI naval pathing and error.log |
 | OPEN-4 | Exact "TOO LARGE BOX" threshold | land ≤ 250 px, sea ≤ 180 px bbox | binary search with a test province |
 | OPEN-5 | Is W×H ≤ 13,238,272 a hard limit or memory-dependent? | stay ≤ 13,107,200 | only relevant if a larger canvas is proposed |
-| OPEN-6 | Target is 1.19.x (owner); baseline measured on 1.14.1 | re-measure at P00 (CHK-003) | diff installed map/common/history formats against 08-vanilla-baseline.md |
+| OPEN-6 | ~~Target is 1.19.x (owner); baseline measured on 1.14.1~~ **closed 2026-09-27**: re-measured on 1.19.3 at P00, see 08-vanilla-baseline.md | re-measure at P00 (CHK-003) — done | diff installed map/common/history formats against 08-vanilla-baseline.md |
 | OPEN-8 | Are gaps in state IDs tolerated? (vanilla-ID anchoring may need it) | validator treats gaps as ERROR | EXP-07 |
 | OPEN-7 | trees.bmp aspect — must it match the map aspect? | scale to 2:1 | visual check |
 

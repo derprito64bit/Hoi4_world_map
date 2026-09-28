@@ -1,9 +1,9 @@
-# TASK P00b: Build the in-game experiment kit (EXP-01..EXP-09)
+# TASK P00b: Build the in-game experiment kit (EXP-01..EXP-09, EXP-04 folded into EXP-03)
 
 Overwatch dispatches this as work unit `P00b` to **pipeline-engineer** (worktree, branch `wu/P00b`), then runs the normal loop (validator → code-reviewer → triage).
 
 ## 1. OBJECTIVE
-Generate nine tiny, self-contained test mods that answer the open engine questions EXP-01..EXP-09 (see both files in `to-check/`), each with a one-page instruction sheet the owner can follow without modding knowledge, so the answers can fix `PROVINCE_BUDGET`, `BBOX_MAX`, the seam-link method, the off-globe filler and state-ID rules before P01.
+Generate eight tiny, self-contained test mods (EXP-04 rides inside EXP-03) that answer the open engine questions EXP-01..EXP-09 (see both files in `to-check/`), each with a one-page instruction sheet the owner can follow without modding knowledge, so the answers can fix `PROVINCE_BUDGET`, `BBOX_MAX`, the seam-link method, the off-globe filler and state-ID rules before P01.
 
 ## 2. SCOPE & BOUNDARIES
 - Active scope: `tools/experiments/**`, `tests/experiments/**`. Output mods go to `build/experiments/EXP-xx/` (gitignored) plus a launcher `.mod` file written by an install script into `$HOI4_USER_DIR/mod/` **only when the owner runs** `python tools/experiments/install.py EXP-xx`.
@@ -24,13 +24,12 @@ Generate nine tiny, self-contained test mods that answer the open engine questio
 | ID | Change | Owner steps (write into `build/experiments/EXP-xx/README.txt`) | Record |
 |---|---|---|---|
 | EXP-01 | add 2 rows linking two non-touching sea provinces: variant A `sea` type with a sea Through, variant B empty type | start as UK, select a fleet, move it to the linked sea province | pathing yes/no per variant + error.log |
-| EXP-02 | three variants: one province spread over 300 / 600 / 1,200 px width | load each | which variants load; error text |
-| EXP-03 | 16k / 20k / 24k / 30k provinces | load each, note load time, play 7 days | loads? time? crash? |
-| EXP-04 | provinces of 6, 7 and 8 px | load | error.log lines |
+| EXP-02 | three variants: one province spread over 300 / 600 / 1,200 px width — a land and a sea province in each (vanilla already loads land 280 / sea 179, P00) | load each | which variants load; error text |
+| EXP-03 (+EXP-04) | 16k / 20k / 24k / 30k provinces; the 20k variant also contains three provinces of 6, 7 and 8 px (Q-004: EXP-04 folded in — `MINIMUM_PROVINCE_SIZE_IN_PIXELS = 8` only logs) | load each, note load time, play 7 days; in the 20k variant search error.log for the three small province IDs | loads? time? crash? error.log lines for the small provinces |
 | EXP-05 | trees.bmp resized to 2:1 and to 3:1 | screenshot forests near the map edges | screenshots |
 | EXP-06 | a block of the map replaced by lake provinces (simulating the off-globe filler) | pan there, move a fleet along it | rendering/pathing notes |
-| EXP-07 | state IDs with one gap (e.g. renumber the last state to max+2) | load, open the state | error.log |
-| EXP-08 | canvas above the community ceiling: vanilla map padded with ocean to 5632×2560 and 6144×2560 (all layers scaled consistently); plus a variant that adjusts `gfx/FX/constants.fxh` map constants if P00 found size-tied values | load each, pan to all edges, note load time | loads? rendering artefacts? error.log |
+| EXP-07 (low priority, Q-005) | state IDs with one gap (e.g. renumber the last state to max+2) — build last; the owner may run it after the others | load, open the state | error.log |
+| EXP-08 | canvas above the community ceiling: vanilla map padded with ocean to 5632×2560 and 6144×2560 (all layers scaled consistently). No `constants.fxh` variant: P00 found no size-tied values (engine injects `MAP_SIZE_X/Y`) — the sheet asks the owner to look for texture stretching or misaligned fog of war instead | load each, pan to all edges, note load time | loads? rendering artefacts? error.log |
 | EXP-09 | edge-look prototype on the project canvas: Equal Earth off-globe mask filled with lake provinces, heightmap 89, ocean colormap tone, `CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM` and `CAMERA_MAX_HEIGHT` variants, optional minimal shader fade (built with gfx-engineer) | screenshots at 5 zoom levels at the curved edges, the Pacific seam and the 60° S edge | screenshots + preference |
 
 ## 5b. LIMITATIONS (write into each README.txt)

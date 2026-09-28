@@ -18,12 +18,12 @@ Definitions: `DEF_COLUMNS DEF_PARSE DEF_IDS DEF_ROW0 DEF_DUP_COLOR DEF_TYPE DEF_
 Pixels: `BMP_UNDEFINED_COLOR DEF_NO_PIXELS PROVINCE_TOO_SMALL X_CROSSING BBOX_LARGE(warn) COASTAL_FALSE_POSITIVE COASTAL_FALSE_NEGATIVE`
 Adjacencies: `ADJ_HEADER ADJ_TERMINATOR ADJ_PARSE ADJ_BAD_PROVINCE ADJ_TYPE(warn) ADJ_THROUGH ADJ_SEA_MIXED(warn) ADJ_RULE`
 Regions: `SR_NO_ID SR_DUP_ID SR_NO_WEATHER(warn) SR_MISSING_PROVINCE SR_DUP_PROVINCE SR_BAD_PROVINCE`
-States: `STATE_PARSE STATE_NO_ID STATE_DUP_ID STATE_CATEGORY STATE_NO_MANPOWER STATE_NO_OWNER(warn) STATE_VP_OUTSIDE STATE_BUILDING_OUTSIDE STATE_NAVAL_NOT_COASTAL STATE_IDS STATE_ORPHAN_LAND STATE_DUP_PROVINCE STATE_SEA_PROVINCE STATE_CROSSES_REGION STATE_EMPTY STATE_NONCONTIGUOUS(warn)`
+States: `STATE_PARSE STATE_NO_ID STATE_DUP_ID STATE_CATEGORY STATE_CATEGORY_DUP(warn) STATE_NO_MANPOWER STATE_NO_OWNER(warn) STATE_VP_OUTSIDE STATE_BUILDING_OUTSIDE STATE_NAVAL_NOT_COASTAL STATE_IDS STATE_ORPHAN_LAND STATE_DUP_PROVINCE STATE_SEA_PROVINCE STATE_CROSSES_REGION STATE_EMPTY STATE_NONCONTIGUOUS(warn)`
 Supply: `RAIL_COUNT RAIL_NOT_LAND RAIL_NO_STATE RAIL_GAP SUPPLY_NOT_LAND SUPPLY_NO_STATE`
-Buildings: `BUILDINGS_BAD_STATE BUILDINGS_NAVAL_SEA`
+Buildings: `BUILDINGS_BAD_STATE BUILDINGS_NAVAL_SEA` (checks `naval_base_spawn` rows — 1.19.x name — and legacy `naval_base`)
 Rivers: `RIVERS_MODE RIVERS_INDEX RIVERS_ON_SEA(warn) RIVERS_THICK(warn)`
 
-Calibration: vanilla 1.14.1 → 9 ERROR (`STATE_VP_OUTSIDE`, vanilla's own data bugs), WARN: 1 sea province with continent 2, 32 non-contiguous states, 1,519 river pixels on sea, 4 thick river blocks. A mutation test (injected X-crossing, undefined colour, removed province, flipped coastal flag) produced the expected 6 new error codes.
+Calibration: vanilla **1.19.3** (P00) → 0 ERROR, WARN: `DEF_SEA_CONTINENT` (1 sea province with continent 2), `BBOX_LARGE` (1 land province, 280 px, only with `--bbox-limit 250`), `STATE_NONCONTIGUOUS` (30), `RIVERS_ON_SEA` (1,549 px), `RIVERS_THICK` (4); after the S10 fix also `STATE_CATEGORY_DUP` (states 190, 433, 440, 816). Earlier 1.14.1 run: 9 ERROR `STATE_VP_OUTSIDE` (vanilla bugs, fixed by 1.19.3), 4 WARN. A mutation test (injected X-crossing, undefined colour, removed province, flipped coastal flag) produced the expected 6 new error codes.
 
 Not checked (manual / in-game): weather realism, bbox exact limit, province count ceiling, DDS sizes, unitstacks completeness, localisation completeness (write a grep check per phase), nudger positions.
 

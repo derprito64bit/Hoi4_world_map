@@ -104,9 +104,10 @@ New focus trees/events, RT56 compatibility, the 1939 bookmark (planned later), b
 
 ## 11. Rendering and "seamless edges" (P14)
 HOI4 renders the map as a flat, heightmapped plane that wraps horizontally; it has **no projection, globe or zoom-dependent warp** — every gameplay coordinate (provinces, units, icons, clicks) is tied to the pixel grid, so geometry cannot be distorted per zoom level without desynchronising the game. The Equal Earth distortion is therefore baked into the bitmaps by our pipeline. What *can* be adjusted (skill `references/11-rendering.md`):
-- camera defines in `common/defines/00_graphics.lua` (`CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM`, `CAMERA_MIN/MAX_HEIGHT`, main-menu camera coordinates, which are vanilla-map positions and must be moved);
+- camera defines in `common/defines/00_graphics.lua` (`NGraphics.CAMERA_OUTSIDE_MAP_DISTANCE_TOP/BOTTOM`; `NFrontend.CAMERA_MIN/MAX_HEIGHT` and the main-menu camera coordinates, which are vanilla-map positions and must be moved);
+- `NGame.MAP_SCALE_PIXEL_TO_KM` (`00_defines.lua`, vanilla 7.114 for 5632 px) → **6.74** for our canvas (owner, Q-003, 2026-09-28);
 - shaders in `gfx/FX/*.fx/.fxh` (overridable by mods) — e.g. fade the off-globe area to a styled ocean/vignette that intensifies or relaxes with camera distance, the same way vanilla fades border colours with zoom;
-- `gfx/FX/constants.fxh` map constants (`MAP_NUM_TILES`, `TEXELS_PER_TILE`, `WATER_HEIGHT`), which may have to match the new canvas (P00 measures; EXP-08 tests).
+- `gfx/FX/constants.fxh`: P00 found no value tied to the map size (atlas and camera-fade constants only; the engine injects `MAP_SIZE_X/Y`), so it probably stays vanilla — EXP-08 confirms visually.
 Goal: moving around the map feels as seamless as vanilla — no hard rectangle corners visible at normal zoom, no seam artefact at the wrap.
 
 ## 12. Build strategy: walking skeleton first (approved by the owner 2026-09-28)

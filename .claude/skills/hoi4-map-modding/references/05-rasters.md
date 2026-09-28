@@ -1,6 +1,6 @@
 # 05 — Raster layers
 
-All measured from vanilla 1.14.1 unless marked [C]. Same size as provinces.bmp unless stated.
+All measured from vanilla 1.14.1 unless marked [C]; 1.19.3 re-measurement (P00) found the same values within a few pixels (see 08-vanilla-baseline.md). Same size as provinces.bmp unless stated.
 
 ## heightmap.bmp — 8-bit greyscale (palette of 256 greys), W×H
 - Value v → height v/10 in engine units; sea level is 9.5 → **v < 95 renders as water, v ≥ 96 as land** [C].
@@ -78,5 +78,5 @@ Colour maps (`colormap_rgb_cityemissivemask_a.dds` 2816×1024 in vanilla = W/2×
 
 ## Toolchain rules
 - Never let an editor convert indexed images to RGB or change the palette order.
-- Write BMPs with Pillow (`Image.save(..., "BMP")`) for P/L modes; verify headers with `validate_map.py`.
+- Write BMPs with Pillow (`Image.save(..., "BMP")`) for P/L modes; verify headers with `validate_map.py`. Pillow writes 40-byte BITMAPINFOHEADERs; vanilla 1.19.3 ships terrain.bmp and trees.bmp with 124-byte BITMAPV5 headers — both header types are expected to load (validator accepts both; EXP-05 confirms in game).
 - Keep generation scripts in `tools/` so every raster can be rebuilt from source data.
