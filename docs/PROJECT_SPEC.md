@@ -71,7 +71,7 @@ P12 in-game verification loop (owner) ─G6─► release candidate
 |---|---|---|
 | G0 | P00 report + EXP results; parameters confirmed | owner |
 | G1 | masks validated; preview images accepted | owner |
-| G2 | all P04 WUs have provenance; history-auditor PASS per continent | history-auditor |
+| G2 | all P04-W WUs of the wave have provenance; history-auditor PASS for the wave | history-auditor |
 | G3 | validator 0 ERROR on provinces/definitions; count ≤ confirmed budget | overwatch (validator + code-reviewer) |
 | G4 | state files 0 ERROR; history-auditor PASS | history-auditor |
 | G5 | full validator 0 ERROR; compat coverage 100 % classified; localisation complete | overwatch |

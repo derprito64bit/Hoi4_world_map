@@ -41,13 +41,13 @@ Target game version is **1.19.x**; the vanilla numbers in `references/08-vanilla
 ## 3. Hard invariants (never violate; the validator enforces most)
 
 1. `provinces.bmp`: 24-bit BMP, uncompressed; width and height multiples of 256; W×H ≤ 13,238,272 (community ceiling).
-2. `terrain.bmp`, `rivers.bmp`, `heightmap.bmp` exactly the same W×H as `provinces.bmp`; terrain/rivers 8-bit **indexed**, heightmap 8-bit greyscale. `world_normal.bmp` = W/2 × H/2, 24-bit.
+2. `terrain.bmp`, `rivers.bmp`, `heightmap.bmp` exactly the same W×H as `provinces.bmp`; terrain/rivers 8-bit **indexed**, heightmap 8-bit greyscale. `world_normal.bmp` = W/2 × H/2, 24-bit (vanilla 1.14) or 32-bit (seen in a 1.19.3 mod).
 3. `definition.csv`: row 0 is `0;0;0;0;land;false;unknown;0`; IDs 1..N sequential, no gaps; every colour unique; every colour in the bitmap has a row and every row has ≥ 8 pixels.
 4. No X-crossings (4 provinces meeting at one pixel corner), including across the left/right wrap seam.
 5. `coastal=true` **iff** a land province is 4-adjacent to a `sea` province (lakes don't count). Sea provinces: `true` iff touching land.
 6. Land provinces: continent ≥ 1 (index into `continent.txt`, 1-based). Sea: continent 0.
 7. Every land province is in **exactly one** state; no `sea` province is ever in a state; lakes may be in a state or not.
-8. State IDs are exactly 1..S, no gaps. File name `<id>-<Name>.txt`.
+8. State IDs are exactly 1..S, no gaps (whether gaps are tolerated is EXP-07). File name `<id>-<Name>.txt` (a 1.19.3 mod uses `<id> - <Name>.txt`; both load).
 9. A state never spans two strategic regions. Every province (land, sea, lake) is in exactly one strategic region.
 10. Victory points, provincial buildings and naval bases reference provinces *inside that state*; naval bases only on coastal provinces.
 11. `railways.txt`: consecutive provinces are adjacent (pixel-adjacent or via adjacencies.csv); all on land provinces that belong to states. `supply_nodes.txt` provinces are land provinces in states.

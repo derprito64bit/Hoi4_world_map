@@ -4,6 +4,7 @@
 | Tier | Source | Used for |
 |---|---|---|
 | 1 | Installed game files of the target version (`map/`, `common/`, `history/`, `documentation/*.md`); in-game `error.log` behaviour | formats, palettes, invariants, what loads |
+| 2 | A mod built for 1.19.3 (Kaiserreich, public GitHub) — used **only** to confirm file formats/syntax under 1.19 (checked 2026-09-28), never for geometry, names or attributes | formats |
 | 1* | Public mirror of vanilla text/map files: `github.com/cbrzeczysz/hoi4-history` (commit "1.14.1 - Bolivar", 2024-03-07) — measured for 08-vanilla-baseline.md | same as Tier 1 **for 1.14.1**; re-verify on newer versions |
 | 2 | CWTools HOI4 rules `github.com/cwtools/cwtools-hoi4-config` (`Config/history/states.cwt`, `Config/map/regions.cwt`, `Config/map/map_consolidated.cwt`) | field names, cardinalities, value ranges |
 | 3 | Paradox wiki (Map modding, State modding, Nudger, Strategic region modding, Supply areas) — only via search snippets in this environment | limits and error texts marked [C] |
@@ -25,14 +26,14 @@ Rule: Tier 3–4 claims stay marked [C] until an in-game test (Tier 1) confirms 
 | Railways 1936 | historical railway atlases / national railway GIS; Tier 3 unless a GIS exists |
 | Climate normals for weather | CRU TS monthly climatology, WorldClim (modern; flag as proxy) |
 
-Network note: in this cloud environment `hoi4.paradoxwikis.com`, Steam, Reddit and most sites are blocked; GitHub raw files, GitLab, PyPI and npm are reachable. The owner can widen the environment's network policy if a phase needs another host.
+Network note: the owner's PC has full network access; only the cloud sessions that wrote this skill were restricted (Paradox wiki blocked there).
 
 ## 3. Open questions (UNRESOLVED — each needs the listed test before it becomes a rule)
 The owner-facing versions of these tests are EXP-01..07 in `to-check/2026-09-27_decisions-and-checks.md` (OPEN-1 = EXP-01, OPEN-2 = EXP-03, OPEN-3 = EXP-06, OPEN-4 = EXP-02, OPEN-7 = EXP-05).
 | ID | Question | Current handling | Test |
 |---|---|---|---|
 | OPEN-1 | Can adjacencies.csv link two sea provinces **without** a land `Through` (wrap-seam Pacific links)? | plan: try `sea` type with sea Through, then empty type | in-game: move a fleet across the seam at 40°N; check naval supply pathing |
-| OPEN-2 | Real province-count ceiling | budget ≤ 16,000 | generate a 20k-province dummy map, load in debug |
+| OPEN-2 | Real province-count ceiling | provisional budget ≈ 20,000 | EXP-03 (16k/20k/24k/30k) |
 | OPEN-3 | Off-globe fill as lake provinces — any rendering/pathing side effects? | lakes in "off-globe" regions | load, pan the map edges, check AI naval pathing and error.log |
 | OPEN-4 | Exact "TOO LARGE BOX" threshold | land ≤ 250 px, sea ≤ 180 px bbox | binary search with a test province |
 | OPEN-5 | Is W×H ≤ 13,238,272 a hard limit or memory-dependent? | stay ≤ 13,107,200 | only relevant if a larger canvas is proposed |

@@ -3,9 +3,9 @@
 ## 1. Gate ladder (a change is done only when every applicable rung passes)
 | Rung | Command / action | Pass condition |
 |---|---|---|
-| V0 | `python3 .claude/skills/hoi4-map-modding/scripts/ee_project.py selftest` | prints `selftest ok` |
-| V1 | `python3 .claude/skills/hoi4-map-modding/scripts/validate_map.py mod --json build/validate.json` | exit 0 (0 ERROR); WARN count ≤ previous run unless justified in the log |
-| V2 | `python3 tools/check_provenance.py` (project script, P01) | every state id has a provenance row; no `confidence` empty |
+| V0 | `python .claude/skills/hoi4-map-modding/scripts/ee_project.py selftest` | prints `selftest ok` |
+| V1 | `python .claude/skills/hoi4-map-modding/scripts/validate_map.py mod --json build/validate.json` | exit 0 (0 ERROR); WARN count ≤ previous run unless justified in the log |
+| V2 | `python tools/check_provenance.py` (project script, P01) | every state id has a provenance row; no `confidence` empty |
 | V3 | `git diff --stat` | only files in the task's declared scope changed |
 | V4 (human, needs game) | launch with `-debug`, load the mod, open `Documents/Paradox Interactive/Hearts of Iron IV/logs/error.log` | 0 lines containing `MAP_ERROR`, `X crossing`, `TOO LARGE BOX`, `pixels`, `province`, `state` errors introduced by the change |
 | V5 (human) | start each bookmark, observe 30 days at max speed | no crash; supply map mode renders; railways/ports drawn |

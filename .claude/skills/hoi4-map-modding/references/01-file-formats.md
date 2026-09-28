@@ -4,6 +4,8 @@ Evidence: **[V]** = observed in vanilla 1.14.1 files; **[S]** = CWTools schema;
 **[C]** = community docs (Paradox wiki via search snippets) — verify in game.
 Paths are relative to the mod root.
 
+Format evidence: 1.14.1 vanilla files [V] and a mod built for **1.19.3** (checked 2026-09-28: all map files parse with 0 validator errors, same columns and headers) — formats are unchanged 1.14 → 1.19.3 for everything below unless noted.
+
 ## map/default.map  [V]
 Points the engine at every map file. Vanilla content (keep file names unless you have a reason):
 ```
@@ -64,6 +66,7 @@ Each name needs localisation (vanilla keys are the names themselves in `*_l_engl
 Header (required, first line):
 `From;To;Type;Through;start_x;start_y;stop_x;stop_y;adjacency_rule_name;Comment`
 Terminator (required, last line): `-1;-1;;-1;-1;-1;-1;-1;-1`
+Blank lines and `#` comment lines between rows are accepted (1.19.3 mod). Types seen: `sea`, `impassable`, empty, `land` (1.19.3 mod); a strait may pass through a **lake** province (1.19.3 mod).
 
 | Pattern (vanilla count) | From/To | Type | Through | Meaning |
 |---|---|---|---|---|
@@ -152,7 +155,7 @@ state_categories={
 ```
 Vanilla slots: enclave 0, tiny_island 0, wasteland 0, pastoral 1, small_island 1, rural 2, town 4, large_town 5, city 6, large_city 8, metropolis 10, megalopolis 12.
 
-## map/buildings.txt  [V]
+## map/buildings.txt  [V] (7 columns, unchanged in the 1.19.3 mod)
 One line per building **model position**: `state_id;building;x;y;z;rotation;extra`
 - `x` = pixel column, `y` = height (~9.5 = sea level), `z` = pixel row **counted from the bottom** of the image, rotation in radians.
 - `extra`: for `naval_base` = the **sea** province the port faces; for `floating_harbor` = the land province it attaches to; otherwise `0`.

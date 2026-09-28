@@ -5,8 +5,9 @@ Checks the invariants documented in ../references/validation.md against a mod
 (or vanilla) directory. Every check is deterministic and reads files only.
 
 Usage:
-    python3 validate_map.py <mod_root> [--vanilla <game_root>] [--json report.json]
-                            [--bbox-limit 700] [--min-pixels 8]
+    python validate_map.py <mod_root> [--vanilla <game_root>] [--json report.json]
+                           [--bbox-limit 250 --bbox-limit-sea 180] [--min-pixels 8]
+    Honours replace_path entries in <mod_root>/descriptor.mod.
 
 <mod_root> must contain map/ and, optionally, history/states/ and
 common/state_category/. Files missing from <mod_root> are read from --vanilla
@@ -69,10 +70,24 @@ def find(root, vanilla, rel):
     return None
 
 
+REPLACE_PATHS = set()
+
+
+def load_replace_paths(root):
+    """replace_path entries of <root>/descriptor.mod: the game ignores vanilla files in those folders."""
+    p = os.path.join(root, "descriptor.mod")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8-sig", errors="replace") as fh:
+            for m in re.finditer(r'^\s*replace_path\s*=\s*"([^"]+)"', fh.read(), re.M):
+                REPLACE_PATHS.add(m.group(1).strip("/"))
+
+
 def list_dir(root, vanilla, rel):
-    """Mod files override vanilla files with the same name (game behaviour without replace_path)."""
+    """Mod files override vanilla files with the same name; folders named in the mod's
+    replace_path entries ignore vanilla entirely (game behaviour)."""
     out = {}
-    for base in (vanilla, root):
+    bases = (root,) if rel.strip("/") in REPLACE_PATHS else (vanilla, root)
+    for base in bases:
         if base and os.path.isdir(os.path.join(base, rel)):
             for f in os.listdir(os.path.join(base, rel)):
                 if f.endswith(".txt"):
@@ -127,11 +142,14 @@ def main():
     ap.add_argument("--vanilla")
     ap.add_argument("--json")
     ap.add_argument("--bbox-limit", type=int, default=0,
-                    help="max province bounding-box side in px (0 = W/8, a conservative heuristic)")
+                    help="max land/lake province bounding-box side in px (0 = W/8, a conservative heuristic)")
+    ap.add_argument("--bbox-limit-sea", type=int, default=0,
+                    help="max sea province bounding-box side in px (0 = same as --bbox-limit)")
     ap.add_argument("--min-pixels", type=int, default=8)
     ap.add_argument("--max-per-code", type=int, default=5, help="console lines printed per finding code")
     args = ap.parse_args()
     root, van = args.mod_root, args.vanilla
+    load_replace_paths(root)
     R = Report()
 
     # ------------------------------------------------------------------ bitmaps
@@ -143,6 +161,8 @@ def main():
     hp = bmp_header(prov_path)
     W, H = hp["w"], abs(hp["h"])
     R.info("DIMENSIONS", f"provinces.bmp {W}x{H}, area {W*H}")
+    if REPLACE_PATHS:
+        R.info("REPLACE_PATHS", f"{len(REPLACE_PATHS)} replace_path folders from descriptor.mod honoured")
     if hp["bpp"] != 24:
         R.err("PROVINCES_BPP", f"provinces.bmp must be 24-bit RGB, found {hp['bpp']}-bit")
     if W % 256 or H % 256:
@@ -168,6 +188,8 @@ def main():
         h = bmp_header(p)
         if (h["w"], abs(h["h"])) != (W // 2, H // 2):
             R.warn("NORMAL_SIZE", f"world_normal.bmp is {h['w']}x{abs(h['h'])}; vanilla uses half the province map ({W//2}x{H//2})")
+        if h["bpp"] not in (24, 32):
+            R.err("BPP", f"world_normal.bmp must be 24- or 32-bit, found {h['bpp']} (vanilla 1.14: 24; a 1.19.3 mod ships 32)")
     else:
         R.err("MISSING_FILE", "map/world_normal.bmp missing")
 
@@ -255,6 +277,7 @@ def main():
 
     # bounding boxes (wrap-aware: take the smaller of direct and wrapped horizontal span)
     limit = args.bbox_limit or W // 8
+    limit_sea = args.bbox_limit_sea or limit
     yy, xx = np.indices(pid.shape)
     flat = pid.ravel()
     ok = flat >= 0
@@ -275,10 +298,10 @@ def main():
             gaps = np.diff(np.r_[cols, cols[0] + W])
             span_x = W - gaps.max() + 1
         span = max(span_x, ymax[i] - ymin[i] + 1)
-        if span > limit:
-            big.append((i, int(span)))
+        if span > (limit_sea if typ.get(i) == "sea" else limit):
+            big.append((i, int(span), typ.get(i)))
     if big:
-        R.warn("BBOX_LARGE", f"{len(big)} provinces have a bounding-box side > {limit} px (risk of 'TOO LARGE BOX')", sample=big[:20])
+        R.warn("BBOX_LARGE", f"{len(big)} provinces exceed the bounding-box limit (land/lake {limit} px, sea {limit_sea} px; risk of 'TOO LARGE BOX')", sample=big[:20])
 
     # coastal flag consistency (4-neighbourhood, wrap-aware)
     land_ids = np.array([i for i in typ if i and typ[i] == "land"])
@@ -305,7 +328,7 @@ def main():
     extra = collections.defaultdict(set)
     apath = find(root, van, "map/adjacencies.csv")
     if apath:
-        lines = [l.rstrip("\r\n") for l in open(apath, encoding="latin-1") if l.strip()]
+        lines = [l.rstrip("\r\n") for l in open(apath, encoding="latin-1") if l.strip() and not l.lstrip().startswith("#")]
         if not lines or not lines[0].lower().startswith("from;to;type;through"):
             R.err("ADJ_HEADER", "adjacencies.csv must start with the header row From;To;Type;Through;start_x;start_y;stop_x;stop_y;adjacency_rule_name;Comment")
         if not lines or not lines[-1].startswith("-1;-1;"):
@@ -315,6 +338,8 @@ def main():
         if rpath:
             rules = set(re.findall(r'name\s*=\s*"?([A-Za-z0-9_]+)', read_text(rpath)))
         for n, l in enumerate(lines[1:], 2):
+            if not l.strip() or l.lstrip().startswith("#"):
+                continue  # blank and comment lines are accepted by the game (seen in a 1.19.3 mod)
             s = l.split(";")
             if s[0] == "-1":
                 continue
@@ -326,11 +351,13 @@ def main():
             for q in (f_, t_):
                 if q not in typ:
                     R.err("ADJ_BAD_PROVINCE", f"adjacencies.csv line {n}: province {q} undefined", line=n)
-            if kind not in ("", "sea", "impassable", "river", "large_river", "lake", "canal"):
+            if kind not in ("", "land", "sea", "impassable", "river", "large_river", "lake", "canal"):
                 R.warn("ADJ_TYPE", f"adjacencies.csv line {n}: unusual type '{kind}'", line=n)
             if kind == "sea":
                 ends = (typ.get(f_), typ.get(t_))
-                if ends == ("land", "land") and typ.get(thr) != "sea":
+                if ends == ("land", "land") and typ.get(thr) == "lake":
+                    R.warn("ADJ_THROUGH_LAKE", f"adjacencies.csv line {n}: strait through a lake province {thr} (seen in a 1.19.3 mod; verify intent)", line=n)
+                elif ends == ("land", "land") and typ.get(thr) != "sea":
                     R.err("ADJ_THROUGH", f"adjacencies.csv line {n}: land-land strait needs a sea 'Through' province (got {thr})", line=n)
                 elif ends == ("sea", "sea") and typ.get(thr) != "land":
                     R.err("ADJ_THROUGH", f"adjacencies.csv line {n}: sea-sea canal needs a land 'Through' province (got {thr})", line=n)

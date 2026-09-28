@@ -11,7 +11,7 @@ You run commands and report numbers. You never interpret history or fix anything
 ## Standard run (skip steps whose inputs don't exist yet)
 1. `python .claude/skills/hoi4-map-modding/scripts/ee_project.py selftest`
 2. `python -m pytest -q tests/`
-3. `python .claude/skills/hoi4-map-modding/scripts/validate_map.py mod --json build/validate_<WU>_r<round>.json`
+3. `python .claude/skills/hoi4-map-modding/scripts/validate_map.py mod --vanilla "$HOI4_GAME_DIR" --bbox-limit 250 --bbox-limit-sea 180 --json build/validate_<WU>_r<round>.json` (limits from PROJECT_SPEC `BBOX_MAX`)
 4. `python tools/check_provenance.py`
 5. `python .claude/agentops/wu_check.py diff <WU> --head wu/<WU>`
 6. The WU's own acceptance commands (given by the caller).

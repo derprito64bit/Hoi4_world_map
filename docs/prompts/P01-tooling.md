@@ -1,46 +1,43 @@
-# TASK P01: Repository scaffolding and build tooling
+# TASK P01: Tooling — params, shared helpers, build runner, preview and provenance tools
 
-> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+Run as `claude --agent overwatch`. Overwatch creates the work units below, dispatches them and runs the loop in `docs/AGENT_SYSTEM.md` §3.
 
 ## 1. OBJECTIVE
-Create the directory layout, a single build runner, shared Python helpers and the provenance checker so every later phase adds generators to one reproducible pipeline and can prove its output with deterministic commands.
+Give every later phase one reproducible pipeline: a single parameter file, shared I/O helpers, a build runner that stops on failure, a preview renderer (visual-qa depends on it), a provenance checker and an asset-copy step — tested on Windows and Linux.
 
-## 2. SCOPE & BOUNDARIES
-- Active scope: `tools/**`, `data/README.md`, `data/provenance/` (headers only), `mod/descriptor.mod` (skeleton), `.gitignore`, `requirements.txt`, `docs/logs/P01.md`.
-- FROZEN: `.claude/skills/**` (use its scripts, don't modify), `docs/PROJECT_SPEC.md`, `docs/prompts/**`, `CLAUDE.md`.
+## 2. WORK UNITS
+| WU | Agent | Scope (globs it may write) |
+|---|---|---|
+| P01a | pipeline-engineer | `tools/params.py`, `tools/common.py`, `tools/build_all.py`, `tools/copy_assets.py`, `tests/test_common.py`, `tests/test_build_all.py`, `requirements.txt`, `.gitignore` |
+| P01b | pipeline-engineer (after P01a merges) | `tools/preview.py`, `tools/check_provenance.py`, `tests/test_preview.py`, `tests/test_provenance.py`, `data/README.md` (provenance CSV schemas live in `check_provenance.py`; state-builders create the CSVs) |
+FROZEN: `.claude/**`, `docs/PROJECT_SPEC.md`, `docs/prompts/**`, `mod/**` (generated only), `assets/**`.
 
 ## 3. CONTEXT
-- G0 decisions: `docs/logs/P00.md` (owner answers appended there). Use those parameter values, not the defaults, where they differ.
-- Layout: `.claude/skills/hoi4-map-modding/references/10-mod-integration.md` §1.
-- Provenance schema: `references/03-states.md` §3.4.
+- Parameters (single source of truth): `docs/PROJECT_SPEC.md` §2–3 and §12 (canvas 5120×2304, lon0 10.9, lat −60..90, 1936-01-01, overlay dates, budgets, `BBOX_MAX` 250/180, density weights, `A_base` 200, `A_min` 30).
+- Projection: import `ee_project.Canvas` from `.claude/skills/hoi4-map-modding/scripts/` (add that path in `tools/common.py`); never copy its maths.
+- Layout: skill `references/10-mod-integration.md` §1; provenance schema `references/03-states.md` §3.4.
 
 ## 4. CONSTRAINTS
-- Hard: Python 3.11 standard library + `numpy pillow scipy shapely pyproj` only (pin versions in `requirements.txt`). No new heavy deps (GDAL, QGIS) — if one becomes necessary later, the phase that needs it proposes it.
-- Hard: `data/raw/` and `build/` are gitignored; only small derived data and CSVs are committed.
-- Hard: all parameters come from one file `tools/params.py` (canvas, lon0, start date, budgets, density weights) — no magic numbers elsewhere.
-- Preference: each generator is a module with `main()` and a `--check` mode that validates without writing.
-- Discretion: internal code organisation.
+- Hard: Python ≥ 3.11 + pinned `numpy pillow scipy shapely pyproj pytest` in `requirements.txt`; no GDAL/QGIS (propose in the log if ever needed).
+- Hard: every parameter lives in `tools/params.py`; a test diffs it against the spec §2 table so they cannot drift.
+- Hard: `build_all.py`: ordered step registry, `--list`, `--from`, `--only`, `--skeleton` (PROJECT_SPEC §12 skeleton passes), stops at the first non-zero exit, runs `validate_map.py` last with the spec's bbox limits and `--vanilla "$HOI4_GAME_DIR"`.
+- Hard: `copy_assets.py` copies `assets/**` into `mod/` and fails if an asset path collides with a generated file.
+- Hard: `preview.py <layer> [--region NAME | --bbox lon0,lat0,lon1,lat1] [--overlay geojson] --out PNG` for layers mask, provinces, states, regions, rivers, terrain, heightmap, seam (left and right edges side by side), offglobe; named regions cover visual-qa's standard sweep (`.claude/agents/visual-qa.md`).
+- Hard: BMP writers for 24-bit RGB, 8-bit indexed (explicit palette), 8-bit L; header test asserts 40-byte DIB, compression 0.
+- Hard: `pathlib` only; env vars `HOI4_GAME_DIR`, `HOI4_USER_DIR`, `HOI4_WORKSHOP_DIR`.
 
 ## 5. DECISION RULES
-- If a helper already exists in the skill scripts (projection, validation) → import/call it; do not copy it.
-- If a parameter is unconfirmed at G0 → use the spec default and mark it `# UNCONFIRMED` in params.py.
+- Spec value ambiguous → use it as written, add `# SPEC-AMBIGUOUS` + a log line; never invent.
+- `mod/map` missing → `build_all.py --list` works and the validator step reports "skipped (no map)".
 
 ## 6. FAILURE MODES
-1. Duplicating the projection math instead of importing `ee_project.py`.
-2. Committing downloaded rasters.
-3. A build runner that silently skips failed steps.
+Duplicated projection code; magic numbers outside params; a runner that swallows errors; a preview that flips rows (row 0 = north).
 
-## 7. EXECUTION WORKFLOW
-1. INSPECT `git status`, read P00 log.
-2. CREATE: `tools/params.py`; `tools/common.py` (canvas via `ee_project.Canvas`, BMP writers for 24-bit RGB / 8-bit indexed with a given palette / 8-bit L, province-id raster load/save as `.npy`); `tools/build_all.py` (ordered steps registry, `--from`/`--only`, stops on first non-zero exit, runs the validator at the end); `tools/check_provenance.py` (every state id in `mod/history/states` has exactly one row in `data/provenance/states*.csv`, required columns non-empty, `source_tier` ∈ {1,2,3}); `tests/test_common.py` (BMP round-trips for each mode; header bytes: 40-byte DIB, bpp 24/8, compression 0).
-3. `mod/descriptor.mod` skeleton per 10-mod-integration.md §2 with version from G0.
-4. `data/README.md`: table of datasets (filled in P02), licence column, "raw data not committed" note.
+## 7. VERIFICATION
+- `python -m pytest -q tests/` → pass (BMP round-trips, params-vs-spec diff, preview smoke test on a synthetic 512×256 map)
+- `python tools/build_all.py --list`
+- `python tools/check_provenance.py` → exit 0 on the empty set
+- `python .claude/agentops/wu_check.py diff P01a --head wu/P01a` (and P01b) → 0 outside scope
 
-## 8. VERIFICATION COMMANDS
-- `python3 -m pytest -q tests/` → all pass
-- `python3 tools/build_all.py --list` → shows registered steps (none yet besides validate)
-- `python3 tools/check_provenance.py` → exit 0 on the empty state set
-- `git diff --stat` → only Active scope
-
-## 9. STOP CONDITION & CHECKPOINT
-Stop when all verification passes. Commit `tools(p01): scaffolding, params, build runner, provenance checker`. Log `docs/logs/P01.md` with NEXT_ACTION = P02.
+## 8. STOP
+Both WUs merged → `docs/logs/P01.md` (NEXT_ACTION = P02). No owner gate.

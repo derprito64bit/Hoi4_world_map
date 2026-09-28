@@ -1,37 +1,29 @@
-# AUDIT A1: Adversarial audit of {{SCOPE}} (Gate {{GATE}})
+# AUDIT A1: Adversarial audit of {{SCOPE}} (gate {{GATE}})
 
-> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
-
-You are the **auditor**, not the author. Your incentive is to find regressions, broken invariants and unsupported claims. You make **no changes** to map data; you write a report.
+Executed by the **history-auditor** agent (dispatched by overwatch); never by the agent that produced the work.
 
 ## 1. OBJECTIVE
-Decide whether {{SCOPE}} (e.g. "P04 europe polygons", "P06 state files, low-confidence + 10 % sample") may pass Gate {{GATE}}, by independently re-checking invariants and a sample of geographic claims against primary sources.
+Decide whether {{SCOPE}} (e.g. "P04-W wave 1 — Europe", "P06 attributes for FRA/BEL/NLD") may pass gate {{GATE}} by re-checking invariants and a sample of historical claims against primary sources.
 
-## 2. SCOPE & BOUNDARIES
-- Read: everything. Write only `docs/logs/A1-{{GATE}}-{{SCOPE_SLUG}}.md`.
-- FROZEN: all other files. Do not fix what you find.
+## 2. SCOPE
+Read everything. Write only `docs/audits/{{GATE}}-{{SCOPE_SLUG}}.md`. Do not fix anything.
 
-## 3. CONTEXT
-- Rules being audited: `.claude/skills/hoi4-map-modding/SKILL.md` §3–5, `references/03-states.md` §3 & §5, the phase prompt that produced the work (`docs/prompts/PXX-*.md`).
-- The producing agent's log is an **assertion, not evidence**. Re-open the underlying files and sources yourself.
+## 3. INPUTS
+Rules audited: `.claude/skills/hoi4-map-modding/SKILL.md` §3–5, `references/03-states.md` §3 and §5, PROJECT_SPEC `COUNTRIES`, the phase prompt of the work. The builder's log, provenance and the fact-checker's report are **assertions** — reopen the sources yourself.
 
 ## 4. EVIDENCE POLICY
-- Tier 1 historical admin/sovereignty sources outrank everything; Tier 2 modern boundaries count only with proof of no change; Tier 3 atlases are weak; Tier 4 (wikis, forums, other mods, vanilla HOI4 shapes) = leads only.
-- For every sampled claim, first try to **falsify** it: search for a boundary change, a renaming, a different capital/VP city location, a population figure that contradicts the manpower.
-- "Could not verify after checking X, Y" is a valid outcome — record it as UNRESOLVED, not as pass.
+Tier 1 (legal acts, gazetteers, national historical GIS, period censuses) > Tier 2 (modern admin data with proof of no change) > Tier 3 (atlases, scholarship). Tier 4 = leads only. Other mods (explicitly Kovas' States Rework) and vanilla HOI4 are never evidence. Try to falsify every sampled claim first. "Could not verify after checking X, Y" = UNRESOLVED, not PASS.
 
 ## 5. PROCEDURE
-1. Re-run deterministic checks yourself: `validate_map.py`, `tools/check_provenance.py`, the phase's `--check` mode. Record exit codes and counts.
-2. Sample: all `confidence=low`/UNRESOLVED items + a seeded random 10 % (seed = the commit short-hash as an integer) of the rest.
-3. For each sampled item, fill the table below. Open the cited source feature/sheet; don't trust the citation string.
-4. Spot-check geometry: overlay the polygon/state on the source for 5 items; compute IoU where both are vectors.
-5. Look for systematic errors (a whole country using modern borders; seam-side mistakes; manpower copied from vanilla — compare against vanilla numbers to detect copying).
+1. Re-run: `validate_map.py`, `tools/check_provenance.py`, the phase `--check`; record exit codes.
+2. Sample: every `confidence=low` / UNRESOLVED / Tier 3 item + seeded random 10 % of the rest (seed = integer of the commit short hash) + every country-status row.
+3. Per item: open the cited feature/sheet; test date fit; look for a boundary change, renaming, status change (e.g. annexation) between source date and 1936-01-01.
+4. Geometry spot-check: overlay 5 states on their sources (`tools/preview.py states --overlay`), IoU where both are vectors.
+5. Systematic issues: modern borders across a whole country; values identical to vanilla (copy detection); seam-side mistakes.
 
-## 6. REQUIRED DELIVERABLE
-`docs/logs/A1-{{GATE}}-{{SCOPE_SLUG}}.md`:
-| ID | Claim (what the data asserts) | Cited source (tier) | Falsification attempt | Finding | Severity (HIGH/MED/LOW) | Confidence |
-|---|---|---|---|---|---|---|
-Then: deterministic check results; systematic issues; verdict **PASS / FAIL** with the rule: any HIGH → FAIL; > 5 % MED in the sample → FAIL.
+## 6. DELIVERABLE `docs/audits/{{GATE}}-{{SCOPE_SLUG}}.md`
+| ID | Claim | Cited source (tier) | Falsification attempt | Finding | Severity (HIGH/MED/LOW) | Confidence |
+Then deterministic results, systematic issues, verdict: any HIGH → **FAIL**; > 5 % MED in the sample → **FAIL**; else **PASS**.
 
-## 7. STOP CONDITION
-Stop when every sampled item has a disposition. Commit only the report: `audit(a1): {{GATE}} {{SCOPE_SLUG}} — PASS|FAIL`. Do not start the next phase.
+## 7. STOP
+Every sampled item has a disposition. Reply with verdict, counts and the path.

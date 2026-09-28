@@ -1,44 +1,38 @@
-# TASK P09: Raster layers — terrain, rivers, final heightmap, normal map, trees, cities, colormaps
+# TASK P09: Raster layers — terrain, dense rivers, final heightmap, normal map, trees, cities, colormaps
 
-> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+Run as `claude --agent overwatch`.
 
 ## 1. OBJECTIVE
-Generate `terrain.bmp`, `rivers.bmp`, final `heightmap.bmp`, `world_normal.bmp`, `trees.bmp`, `cities.bmp` and the `map/terrain/*.dds` colour maps for the canvas; then regenerate the `terrain` column of `definition.csv` from `terrain.bmp` — all from scripted sources, matching vanilla palettes and formats.
+Generate `terrain.bmp`, `rivers.bmp` (dense, DEC-010), final `heightmap.bmp`, `world_normal.bmp`, `trees.bmp`, `cities.bmp` and `map/terrain/*.dds` colour maps for 5120×2304, matching the 1.19 vanilla palettes and formats, then regenerate the definition.csv terrain column from terrain.bmp.
 
-## 2. SCOPE & BOUNDARIES
-- Active scope: `tools/rasters/**`, the listed files under `mod/map/` and `mod/map/terrain/`, the **terrain column only** of `mod/map/definition.csv` (via the generator), `data/provenance/terrain_overrides.csv`, `docs/logs/P09.md`.
-- FROZEN: province pixels and IDs, coastal/continent columns, states, regions, adjacencies.
+## 2. WORK UNITS
+| WU | Agent | Scope |
+|---|---|---|
+| P09a | pipeline-engineer | `tools/rasters/terrain*`, `tools/rasters/heightmap*`, `tools/rasters/normal*`, `tests/rasters/test_terrain*` … (+ generated terrain/heightmap/normal, definition terrain column, `data/provenance/terrain_overrides.csv`) |
+| P09b | pipeline-engineer | `tools/rasters/rivers*`, `tests/rasters/test_rivers*` (+ generated rivers.bmp) |
+| P09c | pipeline-engineer | `tools/rasters/trees*`, `tools/rasters/cities*`, `tools/rasters/colormap*`, tests (+ generated trees/cities/DDS) |
+P09a–c have disjoint scopes and may run in parallel. Review: code-reviewer, visual-qa (terrain/rivers/seam/off-globe previews), validator.
 
 ## 3. CONTEXT
-- Formats and palettes (mandatory): `.claude/skills/hoi4-map-modding/references/05-rasters.md` (terrain index table, river palette, heightmap encoding, normal half-size, trees ratio, DDS).
-- Vanilla palettes: read from `$HOI4_GAME_DIR/map/terrain.bmp`, `rivers.bmp`, `trees.bmp`, `cities.bmp` at runtime (palette only; never commit vanilla files). DDS dimensions/format: read the headers of the installed vanilla files.
-- Inputs: DEM/bathymetry, land cover, rivers (manifest), masks (P03).
+Palettes, encodings, sizes: skill `references/05-rasters.md` (terrain index table; river palette 0–11/254/255; heightmap land ≥ 96, water ≤ 94; normal W/2×H/2, 24- or 32-bit; trees aspect per EXP-05; DDS sizes from P00). Read vanilla palettes and DDS headers from `$HOI4_GAME_DIR` at build time — never commit vanilla files.
 
 ## 4. CONSTRAINTS
-- Hard: exact vanilla palettes (same 256 entries) for terrain/rivers/trees/cities; 8-bit indexed output; heightmap 8-bit L; normal 24-bit W/2×H/2.
-- Hard: heightmap water/land split identical to province surface classes (land ≥ 96, water ≤ 94).
-- Hard: rivers 1 px wide, 4-connected, one source pixel per river main branch, tributaries joined with flow-in (index 1), river pixels only on land.
-- Hard: provincial terrain = majority type of terrain.bmp within the province, then overrides from `terrain_overrides.csv` (each with reason); urban only where a 1936 city ≥ {{URBAN_THRESHOLD}} inhabitants is in the province.
-- Preference: river selection by discharge/Strahler order so that the major rivers (Rhine, Danube, Vistula, Dnieper, Volga, Don, Nile, Congo, Niger, Mississippi, Missouri, Ohio, St Lawrence, Amazon, Paraná, Yangtze, Yellow, Mekong, Irrawaddy, Ganges, Indus, Tigris, Euphrates, Amur, Ob, Yenisei, Lena, Murray…) are continuous.
-- Discretion: land-cover class mapping table (commit it as CSV).
+- Hard: exact 1.19 vanilla palettes for terrain/rivers/trees/cities; 8-bit indexed; heightmap 8-bit L.
+- Hard: heightmap water/land split identical to province surface classes; off-globe = water.
+- Hard: rivers 1 px, 4-connected, one source pixel per main branch, tributaries joined with flow-in (1), no river pixels on sea/lake.
+- Hard: provincial terrain = majority type, then logged overrides; urban only where a 1936 city ≥ threshold (from P06 attributes).
+- Hard: colours at the seam continuous (column 0 ↔ 5119) in colormap, normal and heightmap.
 
 ## 5. DECISION RULES
-- If a river pixel lands on sea/lake after rasterising → clip at the coast; the last land pixel before the mouth stays river.
-- If thinning leaves a 2×2 block → skeletonise again; if a river becomes disconnected → bridge with the shortest 4-connected path along the DEM valley.
-- If terrain majority is a tie → prefer the rougher type (mountain > hills > forest/jungle/marsh > desert > plains).
+River pixel on water → clip at the coast; 2×2 block → re-skeletonise; gap → bridge along the DEM valley. Terrain tie → rougher type.
 
 ## 6. FAILURE MODES
-1. Saving indexed images as RGB (editor or Pillow mode mistake) → `BPP`/`RIVERS_MODE` errors.
-2. Heightmap coast mismatch → flooded coastal provinces.
-3. Rivers of index 11 everywhere (width from wrong attribute).
-4. Hand-editing definition.csv terrain.
+Indexed images saved as RGB; coast mismatch; rivers all max width; seam discontinuity; hand-edited terrain column.
 
-## 7. EXECUTION WORKFLOW
-INSPECT → PLAN (class mapping tables, river selection threshold → log) → EXECUTE each raster → VERIFY → REPORT (terrain type counts vs. vanilla proportions, river pixel counts per width index, override list).
+## 7. VERIFICATION
+- validator → 0 ERROR, `RIVERS_THICK` 0, `RIVERS_ON_SEA` 0
+- `python tools/rasters/check.py` (palette equality with vanilla 1.19, sizes, heightmap/mask agreement, one source per river component, DDS headers match P00's measured formats scaled to the canvas, seam continuity)
+- visual-qa: 0 P0
 
-## 8. VERIFICATION COMMANDS
-- `python3 .claude/skills/hoi4-map-modding/scripts/validate_map.py mod --json build/validate_p09.json` → 0 ERROR; 0 `RIVERS_THICK`; `RIVERS_ON_SEA` = 0.
-- `python3 tools/rasters/check.py` → palette equality with vanilla, sizes, heightmap/mask agreement, one source per river component, DDS headers match vanilla dimensions scaled to the canvas.
-
-## 9. STOP CONDITION & CHECKPOINT
-Commit `map(p09): raster layers and provincial terrain`. NEXT_ACTION = P10.
+## 8. STOP
+All merged → P10.

@@ -12,7 +12,7 @@
 | Min pixels per province | 8 ("Province X has only Y pixels … Should have at least 8") | [C] error text |
 | X-crossings | 0 allowed (MAP_ERROR "Map invalid X crossing") | [C] |
 | Bounding box | "TOO LARGE BOX" if pixels are spread too far; exact threshold **unverified**. Vanilla max side: land 280 px, sea 179 px (map W=5632). Validator warns at W/8. Keep land ≤ 250 px and sea ≤ 180 px until tested. | [C] + [V] |
-| Province count | Community snippet says "less than 19,000"; **unverified**. Vanilla 13,362. Budget ≤ 16,000 total until an in-game stress test passes (OPEN-2). | [C] weak |
+| Province count | Community snippet says "less than 19,000"; **unverified**. Vanilla 13,362. Provisional project budget ≈ 20,000 (PROJECT_SPEC) until EXP-03 measures the real ceiling (OPEN-2). | [C] weak |
 | Colour | unique 24-bit RGB; not `0,0,0` | [V] |
 
 ## 3. Vanilla calibration (5632×2048, Miller-like, cropped)

@@ -8,7 +8,7 @@ All measured from vanilla 1.14.1 unless marked [C]. Same size as provinces.bmp u
 - Build from a DEM (ETOPO/GEBCO/SRTM-derived): `v = 96 + k·log1p(elev_m/ s)` for land, clamp ≤ 250; sea = 89 (optionally 84–93 by depth, shelf lighter). Apply the same land mask as provinces.bmp so the rendered coastline matches the province coastline exactly (a land province with water-height pixels looks flooded; sea with land height shows islands that don't exist).
 - Smooth with a small Gaussian (σ≈1 px) after masking, then re-clamp land ≥ 96 and sea ≤ 94.
 
-## world_normal.bmp — 24-bit RGB, W/2 × H/2
+## world_normal.bmp — 24-bit RGB (vanilla 1.14) or 32-bit (seen in a 1.19.3 mod), W/2 × H/2
 Tangent-space normal map derived from the heightmap (Photoshop "Generate Normal Map", GIMP normal-map plugin, or scripted Sobel → normal) [C]. Recompute whenever the heightmap changes.
 
 ## terrain.bmp — 8-bit indexed, W×H
@@ -68,7 +68,7 @@ Palette (vanilla, by index):
 - Build from a river dataset (e.g. HydroRIVERS / Natural Earth rivers) filtered by discharge/Strahler order; width index from discharge class; skeletonise after rasterising.
 
 ## trees.bmp — 8-bit indexed, 1650×600 in vanilla (not map-sized)
-Stretched over the whole map. Palette indices 3, 4, 7, 10 count as trees (default.map `tree = { 3 4 7 10 }`); vanilla also uses 2, 5, 6, 11, 28, 29 for other vegetation looks. Scale its aspect to the new canvas (e.g. 1500×750 for a 2:1 map) — ratio assumption, verify visually.
+Stretched over the whole map. Palette indices 3, 4, 7, 10 count as trees (default.map `tree = { 3 4 7 10 }`); vanilla also uses 2, 5, 6, 11, 28, 29 for other vegetation looks. Scale its aspect to the new canvas (5120×2304 ≈ 2.22:1 → e.g. 1650×742) — ratio assumption, EXP-05 verifies.
 
 ## cities.bmp — 8-bit indexed, W×H
 Palette index → `city_group` in cities.txt (e.g. 15 western). Decorative city meshes; regenerate from the land mask with vanilla indices by region.

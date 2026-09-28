@@ -2,6 +2,7 @@
 
 ## 1. Layout of the mod inside this repo
 ```
+assets/                      <- hand-authored mod files (shaders, define overrides), copied into mod/ by the build
 mod/                         <- the actual HOI4 mod root (what the launcher loads)
   descriptor.mod
   map/ ...                   (all map files; replaces vanilla files of the same name)
@@ -26,7 +27,7 @@ replace_path="map/strategicregions"
 replace_path="map/supplyareas"
 replace_path="history/units"       # only once OOBs are rewritten; see §4
 ```
-`replace_path` makes the game ignore vanilla files in that folder. Map files in `map/` with the same name as vanilla simply override. Without `replace_path="history/states"`, vanilla state files with ids not overwritten by the mod would still load and reference nonexistent provinces → crash.
+`replace_path` makes the game ignore vanilla files in that folder (still used by mods built for 1.19.3, e.g. `replace_path = "history/states"`, `"map/strategicregions"`, `"map/supplyareas"` — checked 2026-09-28). Map files in `map/` with the same name as vanilla simply override. Without `replace_path="history/states"`, vanilla state files with ids not overwritten by the mod would still load and reference nonexistent provinces → crash.
 
 ## 3. Localisation
 - Files: `localisation/english/<name>_l_english.yml`, **UTF-8 with BOM**, first line `l_english:`, entries ` KEY:0 "Text"` (leading space).

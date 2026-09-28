@@ -9,7 +9,7 @@ enforced by config rather than prose, no extra personas without a distinct job.
 ## 1. Roster
 | Agent | Model | Writes (hook-enforced) | Job | May call |
 |---|---|---|---|---|
-| **overwatch** (main session: `claude --agent overwatch`) | opus, effort high | `docs/logs/**`, `docs/board/**`, `docs/OPEN_QUESTIONS.md`, `to-check/**` | plans work units, dispatches, runs the loop, merges to `main`, stops at owner gates | all below |
+| **overwatch** (main session: `claude --agent overwatch`) | opus, effort high | `docs/logs/**`, `docs/board/work_units.json`, `docs/OPEN_QUESTIONS.md`, `to-check/**` | plans work units, dispatches, runs the loop, merges to `main`, stops at owner gates | all below |
 | **researcher** | sonnet | `data/research/**` | finds + extracts primary evidence, tiered, with falsification attempts | — |
 | **state-builder** (worktree) | sonnet | `data/states/**`, `data/provenance/**`, `data/research/**`, `data/countries/**` | one country/region per WU: geometry, splits/merges, attributes, provenance | researcher |
 | **pipeline-engineer** (worktree) | opus | `tools/**`, `tests/**`, `requirements.txt`, `data/README.md`, `data/manifest.csv`, `.gitignore` | all generator code; the only code writer | — |
@@ -63,6 +63,7 @@ dispatch (overwatch) ─► builder/engineer commits on wu/<id>
   "depends_on": ["G1"], "status": "todo|in_progress|review|changes_requested|done|blocked",
   "branch": "wu/P04-EU-POL", "attempts": 0, "notes": "" }
 ```
+WU `scope` must also list the **generated outputs** a WU commits (e.g. `mod/map/provinces.bmp`), because `wu_check.py diff` checks the whole diff; the hook still forbids hand-editing them — generators write them through Bash.
 Unit granularity: P04/P06 per **country** (big countries split: USSR per republic/oblast group, China per province group, British India per presidency/agency, USA per census region); generators per **phase step**.
 `python .claude/agentops/wu_check.py overlap` must be 0 before dispatching.
 

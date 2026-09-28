@@ -1,51 +1,38 @@
-# TASK P03: Canvas, land/sea/lake/off-globe masks and draft heightmap
+# TASK P03: Canvas, surface masks and draft heightmap (5120×2304, Equal Earth, 60° S crop)
 
-> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+Run as `claude --agent overwatch`. Owner gate **G1** at the end.
 
 ## 1. OBJECTIVE
-Generate the base rasters every later phase builds on, in the Equal Earth canvas: `build/masks/surface.npy` (uint8: 0 off-globe, 1 sea, 2 land, 3 lake), a preview PNG, and a draft `mod/map/heightmap.bmp` whose water/land split matches the mask pixel-for-pixel.
+Generate `build/masks/surface.npy` (uint8: 0 off-globe, 1 sea, 2 land, 3 lake) and a draft `mod/map/heightmap.bmp` whose water/land split matches the mask pixel for pixel, with logged island and strait adjustments — the base every later phase builds on.
 
-## 2. SCOPE & BOUNDARIES
-- Active scope: `tools/make_masks.py`, `tools/make_heightmap.py`, `build/masks/**`, `mod/map/heightmap.bmp`, `data/provenance/island_adjustments.csv`, `data/provenance/mask_edits.csv`, `docs/logs/P03.md`.
-- FROZEN: `mod/map/provinces.bmp`, `definition.csv` (P05), states (P04/P06), everything else.
+## 2. WORK UNITS
+| WU | Agent | Scope |
+|---|---|---|
+| P03a | researcher | `data/research/protected_features.md` — protected straits/isthmuses and significant small islands (name, lon/lat, why significant, source) |
+| P03b | pipeline-engineer (after P03a) | `tools/make_masks.py`, `tools/make_heightmap.py`, `tests/test_masks.py`, `tests/test_heightmap.py` (+ generated `mod/map/heightmap.bmp`, `data/provenance/island_adjustments.csv`, `data/provenance/mask_edits.csv`) |
+Review: fact-checker (P03a), code-reviewer + visual-qa (P03b).
 
 ## 3. CONTEXT
-- Canvas, seam, off-globe rules: `.claude/skills/hoi4-map-modding/references/06-equal-earth.md` (all of it).
-- Heightmap encoding: `references/05-rasters.md` (heightmap section): land ≥ 96, water ≤ 94 (sea 89).
-- Projection: `from ee_project import Canvas` (skill scripts dir) with `tools/params.py` values.
-- Data: coastline/land/lakes (Natural Earth 10 m or better), DEM + bathymetry, per `data/manifest.csv`.
+- Canvas, seam, off-globe rules: skill `references/06-equal-earth.md`; heightmap encoding `references/05-rasters.md`; island rule `references/02-provinces.md` §5 step 6 (8–10 px minimal blobs, DEC-009).
+- `Canvas(5120, 2304, 10.9, lat_min=-60)` via `tools/params.py`.
 
 ## 4. CONSTRAINTS
-- Hard: rasterise in canvas space after densifying polygon edges to ≤ 0.25°; pixel centres decide membership.
-- Hard: no land polygon may straddle the seam; islands on the cut are moved whole to one side and logged (06 §4).
-- Hard: morphological clean-up must not delete any land body ≥ 8 px or any listed significant island; must not open or close straits/isthmuses on the protected list (Bosporus, Dardanelles, Gibraltar, Øresund, Kerch, Messina, Bab-el-Mandeb, Hormuz, Malacca, Sunda, Torres, Bering, Panama isthmus, Suez isthmus, Kra, Corinth) — protect them by explicit masks.
-- Hard: lakes smaller than 12 px become land; record count.
-- Preference: vectorised numpy; whole run < 10 min.
-- Discretion: resampling method for the DEM (document it).
+- Hard: rasterise in canvas space after densifying edges to ≤ 0.25°; no land body straddles the seam (islands on the cut moved whole, logged).
+- Hard: clean-up never removes a land body ≥ 8 px or any P03a feature; protected straits/isthmuses (at least Bosporus, Dardanelles, Gibraltar, Øresund, Kerch, Messina, Bab-el-Mandeb, Hormuz, Malacca, Sunda, Torres, Bering, the Panama and Suez isthmuses, Kra, Corinth) enforced by explicit masks.
+- Hard: lakes < 12 px become land (count logged); heightmap land ≥ 96, water ≤ 94 (sea 89), off-globe 89.
+- Hard: deterministic; runtime logged.
 
 ## 5. DECISION RULES
-- If a 1-px-wide land bridge or water channel appears that is not on the protected list → remove it (land bridge → sea or water channel → land by majority of the 3×3 neighbourhood), log in `mask_edits.csv`.
-- If a historically significant island (VP, naval base, strait endpoint, 1936 colony seat) rasterises to < 12 px → stamp a compact 12–20 px blob at its true centroid, log in `island_adjustments.csv` with source coordinates.
-- If total land px per continent deviates > 3 % from `references/06-equal-earth.md` §2 → stop and investigate (wrong CRS, wrong lon0, double-wrap).
-- If heightmap land pixel would be < 96 → set to 96; water pixel > 94 → set to 89.
+- 1-px bridge/channel not in P03a → resolve by 3×3 majority, log in `mask_edits.csv`.
+- A continent's land px deviates > 3 % from the budget in `references/06-equal-earth.md` §2 (Antarctica excluded) → stop; check CRS, lon0, double wrap.
 
 ## 6. FAILURE MODES
-1. Longitude wrap bug (lon0 applied twice) → continents shifted by 10.9°.
-2. Rows flipped (BMP bottom-up confusion) → check Berlin lands at row ≈ 353 from the top at lon0 10.9 (`ee_project.py point --lon 13.4 --lat 52.5`).
-3. Off-globe pixels treated as sea (they must be class 0).
-4. Coastline mismatch between mask and heightmap.
+lon0 applied twice (continents shifted 10.9°); rows flipped (check `ee_project.py point --lon 13.4 --lat 52.5` → row ≈ 333 is land near Berlin); off-globe treated as sea; mask/heightmap coast mismatch.
 
-## 7. EXECUTION WORKFLOW
-1. INSPECT: P02 manifest rows `ok`; `ee_project.py selftest`.
-2. PLAN: write the protected-straits list and significant-island list (with coordinates and source) to the log before running.
-3. EXECUTE masks → islands/straits fixes → heightmap.
-4. VERIFY (commands below), render `build/masks/preview.png` (classes coloured) and a zoomed crop of Europe, the Bering seam, the Malay archipelago and the Caribbean.
-5. REPORT per-continent land px vs. budget, counts of edits.
+## 7. VERIFICATION
+- `python tools/make_masks.py --check` (shape 2304×5120; classes ⊂ {0..3}; class 0 == `~Canvas.globe_mask()`; no land on class 0; no land component touching both column 0 and 5119)
+- `python tools/make_heightmap.py --check` ((h ≥ 96) == (mask == 2) everywhere)
+- `python tools/preview.py mask --region <each visual-qa sweep region>` → visual-qa report with 0 P0
 
-## 8. VERIFICATION COMMANDS
-- `python3 tools/make_masks.py --check` → asserts: shape (H, W) = params; classes ⊂ {0,1,2,3}; class-0 pixels == `~Canvas.globe_mask()`; no land/lake pixel in class 0; no land component crosses column 0/W-1.
-- `python3 tools/make_heightmap.py --check` → heightmap.bmp is 8-bit, W×H; `(h>=96) == (mask==2)` for every pixel; water pixels ≤ 94.
-- `python3 .claude/skills/hoi4-map-modding/scripts/ee_project.py point --lon 13.4 --lat 52.5` and confirm the preview shows Berlin's land at that pixel.
-
-## 9. STOP CONDITION & CHECKPOINT
-Stop when checks pass. Commit `map(p03): equal-earth masks and draft heightmap` (commit only scripts, CSVs, heightmap.bmp; `build/` stays ignored — attach preview paths in the log). HARD STOP at Gate G1: final message lists the preview images for the owner and the per-continent table.
+## 8. STOP — owner gate G1
+Overwatch posts the previews (Europe, Bering seam, Malay archipelago, Caribbean, curved edges, 60° S edge) and the per-continent table, then waits for the owner.

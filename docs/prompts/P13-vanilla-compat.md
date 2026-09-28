@@ -12,7 +12,8 @@ Make vanilla 1.19.x focus trees, events, decisions, history and AI work on the n
 ## 3. CONTEXT
 - Agent instructions: `.claude/agents/compat-engineer.md` (mapping method).
 - References to scan: skill references/10-mod-integration.md §4 (folders + regex patterns).
-- Inputs: vanilla files from `$HOI4_GAME_DIR`; new state polygons (`data/states/**`), province raster (`build/pid.npy`, P05).
+- Inputs: vanilla files from `$HOI4_GAME_DIR`; new state polygons (skeleton pass: `build/states/skeleton.geojson`; waves: `data/states/**`), province raster (`build/pid.npy`, P05). Re-run P13a after every refinement wave so anchors follow the new states.
+- Vanilla is also the "did we forget a territory?" coverage check (DEC-025): every vanilla state's geocoded area must fall inside some new state.
 
 ## 4. CONSTRAINTS
 - Hard: every vanilla state ID is assigned to exactly one new state (the anchor); new states get IDs above the highest vanilla ID; no ID reused for a different place.

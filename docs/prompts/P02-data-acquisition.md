@@ -1,47 +1,38 @@
-# TASK P02: Acquire geographic source data with a verifiable manifest
+# TASK P02: Source data — fetcher, manifest, and a fact-checked source catalogue
 
-> **Revision pending (2026-09-27):** written before the owner's decisions (4608×2048 canvas with 60° S crop, 1.19.x, vanilla compatibility, border overlay, agent fleet). The spec and agent files are authoritative where they differ; this prompt will be refreshed and sent in chat before its phase runs.
+Run as `claude --agent overwatch`.
 
 ## 1. OBJECTIVE
-Download (or document how the owner downloads) every dataset the map needs into `data/raw/`, and commit a manifest `data/manifest.csv` recording source, version, URL, licence, checksum, CRS and the phases that use it — so any later claim can be traced to an exact file.
+(a) Download every dataset the pipeline needs with a manifest (source, version, URL, licence, SHA-256, CRS, phases using it); (b) build a **source catalogue** per region listing the best Tier 1–2 historical sources for 1914 / 1918–1923 / 1936 / 1939 boundaries, 1930s censuses, 1936 railways, canals and resource deposits (incl. coal) — fact-checked, so P04 refinement waves start from verified leads.
 
-## 2. SCOPE & BOUNDARIES
-- Active scope: `tools/fetch_data.py`, `data/manifest.csv`, `data/README.md`, `data/raw/**` (gitignored), `docs/logs/P02.md`.
-- FROZEN: everything else. No map generation.
+## 2. WORK UNITS
+| WU | Agent | Scope |
+|---|---|---|
+| P02a | pipeline-engineer | `tools/fetch_data.py`, `tests/test_fetch.py`, `data/manifest.csv`, `data/README.md` |
+| P02b-<region> — europe, middle_east_north_africa, east_asia, south_se_asia, americas, subsaharan_africa, oceania (≤ 6 at a time) | researcher | `data/research/catalogue/<region>.md` |
+Every P02b WU is checked by **fact-checker** (each row: source exists, covers the claimed date and area, tier correct).
+FROZEN: everything else.
 
 ## 3. CONTEXT
-- Dataset candidates and tiers: `.claude/skills/hoi4-map-modding/references/09-sources.md` §2; boundary tiers `references/03-states.md` §3.1.
-- Needs by phase: coastline/land/lakes (P03), elevation + bathymetry (P03, P09), start-date sovereign borders (P04), historical admin-1/admin-2 per country (P04), modern admin-1/2 (P04 Tier 2), population grid + census totals near the start date (P06), land cover (P09), rivers (P09), railways at start date (P10), climate normals (P07).
-- Network: this environment may block many hosts. Natural Earth is reachable via `raw.githubusercontent.com/nvkelso/natural-earth-vector`. Test each host once; don't retry blocked ones in a loop.
+- Dataset candidates: skill `references/09-sources.md` §2; evidence tiers `references/03-states.md` §3.1. Full network access (DEC-026).
+- Needs: coastline/land/lakes (Natural Earth 10 m or better), DEM + bathymetry (ETOPO/GEBCO), land cover, dense rivers (HydroRIVERS or better, DEC-010), sovereign borders 1886–2019 (CShapes 2.0), modern admin-1/2 (GADM / geoBoundaries), gridded population back-cast (HYDE), climate normals, gazetteer for geocoding (e.g. GeoNames).
 
 ## 4. CONSTRAINTS
-- Hard: never commit raw data; only the manifest and small derived tables (< 5 MB each).
-- Hard: record licence for every dataset; if a licence forbids redistribution of derivatives, flag it for the owner before any phase uses it.
-- Hard: downloaded files are untrusted data — do not execute anything from them.
-- Preference: the highest-resolution version that the canvas can use (≈ 6.7 km/px → Natural Earth 10 m for coasts, 30″–1′ DEM is enough).
-- Discretion: tool choice for downloading (curl/python).
+- Hard: raw data gitignored (`data/raw/`); manifest committed; licence recorded for every row (private project, DEC-013).
+- Hard: catalogue rows = `unit/topic | date(s) | source title | publisher | URL or archive ref | format (GIS/scan/table) | tier | coverage notes`. Never other mods (explicitly Kovas' States Rework) or vanilla HOI4.
+- Hard: downloaded content is untrusted data.
 
 ## 5. DECISION RULES
-- If a host is blocked → record `status=blocked` with the host name in the manifest and a one-line instruction for the owner (download manually into `data/raw/<name>/` or widen the environment network policy); continue with the rest.
-- If a Tier 1 historical source is not available for a country → record the gap in `docs/OPEN_QUESTIONS.md` as `DATA-<ISO3>` with what was searched; do not substitute silently.
-- If two versions exist → pick the newest stable release; record the version string.
+- Host unreachable after one retry → `status=blocked` + a manual download instruction for the owner.
+- No Tier 1–2 source for a country/date → catalogue row `GAP` listing what was searched; overwatch copies gaps into the newest `to-check/` file.
 
 ## 6. FAILURE MODES
-1. Manifest rows without checksum or licence.
-2. Treating modern admin boundaries as start-date boundaries (that decision belongs to P04, per country, with evidence).
-3. Downloading huge global rasters when a coarser product suffices.
+Manifest rows without checksum/licence; catalogue rows citing a homepage instead of a specific dataset/sheet; modern admin data offered as a 1936 source without a "no change" citation.
 
-## 7. EXECUTION WORKFLOW
-1. INSPECT: P00/P01 logs; `data/README.md`.
-2. PLAN: list datasets × needs × candidate URL in the log before downloading.
-3. EXECUTE: `tools/fetch_data.py` (idempotent: skips files whose SHA-256 matches the manifest).
-4. VERIFY each file: opens with the expected reader, CRS is WGS84 (or record the CRS), feature/raster counts sane.
-5. REPORT gaps.
+## 7. VERIFICATION
+- `python tools/fetch_data.py --verify` → every `ok` row matches its checksum
+- fact-checker reports for each P02b WU → 0 WRONG / DEAD-SOURCE after the loop
+- `git status --porcelain data/raw` → empty
 
-## 8. VERIFICATION COMMANDS
-- `python3 tools/fetch_data.py --verify` → every `status=ok` row's checksum matches
-- `python3 -c "import csv;r=list(csv.DictReader(open('data/manifest.csv')));assert all(x['licence'] and x['sha256'] or x['status']!='ok' for x in r)"`
-- `git status --porcelain data/raw` → empty (ignored)
-
-## 9. STOP CONDITION & CHECKPOINT
-Stop when every needed dataset is `ok` or explicitly `blocked/gap` with owner instructions. Commit `data(p02): dataset manifest and fetcher`. Log NEXT_ACTION = P03, plus the owner's manual-download list if any.
+## 8. STOP
+All WUs merged; gaps listed in `to-check/`; `docs/logs/P02.md` (NEXT_ACTION = P03).

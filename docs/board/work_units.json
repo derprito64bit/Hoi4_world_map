@@ -13,9 +13,9 @@
       ],
       "depends_on": [],
       "status": "todo",
-      "branch": "wu/P00",
+      "branch": "main",
       "attempts": 0,
-      "notes": ""
+      "notes": "overwatch's own read-only phase; commits the log on main"
     },
     {
       "id": "P00b",

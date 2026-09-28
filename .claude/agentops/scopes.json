@@ -12,7 +12,8 @@
   "agents": {
     "overwatch": [
       "docs/logs/**",
-      "docs/board/**",
+      "docs/board/work_units.json",
+      "docs/board/README.md",
       "docs/OPEN_QUESTIONS.md",
       "to-check/**"
     ],
