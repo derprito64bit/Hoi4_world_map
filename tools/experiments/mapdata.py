@@ -156,6 +156,17 @@ def pair_set(pairs: np.ndarray) -> set:
     return set(map(tuple, pairs.tolist()))
 
 
+def adjacency_ids(text: str) -> set:
+    """Every province named in adjacencies.csv (From, To and Through columns)."""
+    out = set()
+    for ln in text.splitlines()[1:]:
+        s = ln.split(";")
+        for k in (0, 1, 3):
+            if len(s) > k and s[k].strip().isdigit() and int(s[k]) > 0:
+                out.add(int(s[k]))
+    return out
+
+
 def adjacency_links(text: str) -> set:
     """(a, b) pairs (a < b) that adjacencies.csv connects (every row except type 'impassable')."""
     out = set()

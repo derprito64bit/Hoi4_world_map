@@ -84,17 +84,28 @@ def validate_one(ctx, exp, bid) -> bool:
     js = BUILD_ROOT / f"validate_{bid}.json"
     cmd = [sys.executable, str(VALIDATOR), str(out), "--vanilla", str(ctx.game), "--bbox-limit", "250",
            "--bbox-limit-sea", "180", "--json", str(js)]
+    if not out.is_dir():
+        print(f"FAIL {bid}: not built")
+        return False
+    if js.exists():
+        js.unlink()                       # a stale report must never count as this run's result
     t0 = time.time()
-    subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True)
     try:
         items = json.loads(js.read_text())
+        if js.stat().st_mtime < t0 - 1:
+            raise ValueError("stale report")
     except (OSError, ValueError):
-        print(f"FAIL {bid}: validator produced no report")
+        print(f"FAIL {bid}: validator produced no fresh report (exit {res.returncode}): {res.stderr.strip()[-300:]}")
         return False
     errs = {i["code"] for i in items if i["level"] == "ERROR"}
     warns = {i["code"] for i in items if i["level"] == "WARN"}
     want = exp.expected(bid)
-    ok = errs == want.errors and warns <= want.warns
+    # validate_map.py: 0 = no ERROR, 1 = ERROR findings, anything else = it could not run
+    rc_ok = res.returncode == (1 if want.errors else 0)
+    if not rc_ok:
+        print(f"FAIL {bid}: validator exit code {res.returncode}, expected {1 if want.errors else 0}")
+    ok = rc_ok and errs == want.errors and warns <= want.warns
     tag = "OK  " if ok else "FAIL"
     print(f"{tag} {bid}: ERROR {sorted(errs) or '-'}  WARN {sorted(warns) or '-'}  "
           f"(expected ERROR {sorted(want.errors) or '-'}, WARN within baseline) {time.time() - t0:.0f} s")

@@ -241,3 +241,87 @@ def test_exp09_layout_rejects_oversized_state():
     globe = np.ones((64, 128), bool)
     with pytest.raises(KitError):
         layout(globe, [(1, list(range(1, 40)))], [], [], 40, Params(bar_w=4, bar_h=4, line_w=20))
+
+
+# ---------------------------------------------------------------- r2 additions
+def test_exp01_build_ids_and_rows():
+    from experiments.exp01 import PAIRS, Exp01, link_row, parse_id
+    assert Exp01().build_ids(None) == ["EXP-01-UK-A", "EXP-01-UK-B", "EXP-01-SEAM-A", "EXP-01-SEAM-B"]
+    assert parse_id("EXP-01-SEAM-B") == ("SEAM", "B")
+    a, b = PAIRS["SEAM"]
+    assert link_row("A", "SEAM").split(";")[:4] == [str(a), str(b), "sea", str(b)]
+    assert link_row("B", "SEAM").split(";")[:4] == [str(a), str(b), "", "-1"]
+    with pytest.raises(KitError):
+        parse_id("EXP-01A")
+
+
+REGION = """strategic_region={
+\tid=1
+\tprovinces={
+\t\t1 2 3
+\t}
+\tnaval_terrain=water_deep_ocean
+\tweather={
+%s\t}
+}
+"""
+
+
+def region_with(tmin, arctic, snow=0.0, months=12):
+    per = ""
+    for m in range(months):
+        per += ("\t\tperiod={\n\t\t\tbetween={ 0.%d 27.%d }\n\t\t\ttemperature={ %.1f 5.0 }\n\t\t\tno_phenomenon=0.5\n"
+                "\t\t\tsnow=%.3f\n\t\t\tarctic_water=%.3f\n\t\t}\n") % (m, m, tmin, snow, arctic)
+    return REGION % per
+
+
+def test_weather_parse_and_icy():
+    from experiments.weather import parse_periods, winter_icy
+    p = parse_periods(region_with(-20.0, 1.0))
+    assert len(p) == 12 and p[11]["start_month"] == 11 and p[0]["tmin"] == -20.0 and p[0]["arctic_water"] == 1.0
+    assert winter_icy(region_with(-20.0, 1.0)) and winter_icy(region_with(-5.0, 0.0, snow=0.2))
+    assert not winter_icy(region_with(5.0, 1.0)) and not winter_icy(region_with(-5.0, 0.0))
+    assert not winter_icy("strategic_region={ id=1 provinces={ 1 } }")
+
+
+def test_exp09_shot6_helpers():
+    from experiments.exp09 import not_icy, shot6_water
+    pid = np.array([[1, 1, 2, 2], [1, 3, 3, 2], [4, 4, 4, 4]], dtype=np.int32)
+    types = np.array([-1, SEA, SEA, LAND, SEA])
+    assert shot6_water(pid, types, [(0, 0)], radius=1) == [1]
+    assert shot6_water(pid, types, [(1, 2)], radius=1) == [1, 2, 4]
+    icy, warm = region_with(-20.0, 1.0), region_with(5.0, 0.0)
+    assert not_icy([1, 2, 4], lambda i: icy if i != 4 else warm) == [4]
+
+
+def test_exp06_drop_naval_terrain():
+    from experiments.exp06 import drop_naval_terrain
+    t = region_with(1.0, 0.0, months=1)
+    out = drop_naval_terrain(t)
+    assert "naval_terrain" not in out and out == t.replace("\tnaval_terrain=water_deep_ocean\n", "")
+    with pytest.raises(KitError):
+        drop_naval_terrain(out)
+
+
+def test_exp03_frozen_provinces_are_never_split():
+    from experiments.exp03 import subdivide
+    pid, d = big_world()
+    out, root = subdivide(pid, d.types(), 6, np.arange(d.n), {}, {2, 3}, min_px=40, frozen={2, 5})
+    for i in (2, 5):
+        assert np.array_equal(out == i, pid == i)
+    assert len(root) == d.n + 6
+
+
+def test_exp09_layout_north_tiles_get_new_ids():
+    from experiments.common import ee_project
+    from experiments.synth import Params, layout
+    cv = ee_project().Canvas(512, 256, 10.9, -60.0, 90.0)
+    globe = cv.globe_mask()
+    north_row = int(cv.to_pixel(10.9, 50.0)[1])
+    p = Params(bar_w=2, bar_h=4, gap=2, line_w=12, sea_cell=16, off_cell=20, min_sea=8, min_off=8)
+    lay = layout(globe, [(1, [1, 2, 3])], [], [4, 5, 6], 7, p, north_row=north_row)
+    assert lay.sea_north and lay.sea_new[:len(lay.sea_north)] == lay.sea_north
+    ys, xs = np.nonzero(np.isin(lay.pid, lay.sea_north))
+    assert ys.mean() < north_row
+    for i in (4, 5, 6):                                         # vanilla sea IDs sit south of the northern band
+        assert np.nonzero(lay.pid == i)[0].mean() >= north_row - 16

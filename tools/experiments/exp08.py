@@ -37,7 +37,7 @@ from .bmpio import read_bmp, write_bmp
 from .common import KitError, decode, encode, fmt2, write_bytes
 from .dds import (Dds, bgra_to_rgba, dxt5_decode, dxt5_mip_chain, dxt5_pad_blocks, dxt5_uniform_block,
                   full_mip_count, read_dds, rgba_to_bgra, write_dds)
-from .mapdata import (LAND, SEA, Definition, coast_points, coastal_flags, find_block, fix_x_crossings, game_xz,
+from .mapdata import (LAND, SEA, Definition, coast_points, coastal_flags, find_block, fix_x_crossings, game_to_pixel, game_xz,
                       interior_points, new_colors, pid_from_rgb, rgb_from_pid, x_crossings)
 from .positions import PER_COAST, join_lines, split_lines
 from .tiling import tile
@@ -319,12 +319,65 @@ class Exp08(Experiment):
                   "Screenshots of the edges; describe anything misaligned or stretched.",
                   "Did the game run normally for a few days (yes/no)?"],
             expected=self.expected(build_id).text, cannot=["EXP-08"], user_dir=ctx.user,
-            notes=["No shader or constants.fxh change is included: P00 found no map-size constant there "
+            notes=["Fog-of-war texture: the full-size level keeps the normal game's data exactly, but its smaller "
+                   "zoom levels are recomputed by the kit for the whole map. Slight blockiness of fog/water shine at "
+                   "far zoom, over the WHOLE map, would come from that, not from the canvas size; say where you see it.",
+                   "No shader or constants.fxh change is included: P00 found no map-size constant there "
                    "(the engine supplies MAP_SIZE_X/Y).",
                    f"{len(info['newly_coastal'])} Arctic land provinces on the old top edge now touch the new ocean "
                    "and became coastal; they got port/coastal positions like every other coast."])
 
     # ------------------------------------------------------------ check
+    def check_added(self, v, pid, types, newly, n0, n, added, region_files, H1) -> list:
+        """The appended lines must be exactly: one weather line per new region; the commonest vanilla sea
+        stack set for every padding sea plus the missing coastal types 19/20 for newly coastal land; and
+        every coastal building type once for every newly coastal land province."""
+        probs = []
+        W1 = pid.shape[1]
+        rids = sorted(int(p.name.split("-")[0]) for p in region_files)
+        got_w = sorted(int(ln.split(";")[0]) for ln in added["map/weatherpositions.txt"])
+        if got_w != rids:
+            probs.append(f"weatherpositions.txt: added lines for regions {got_w[:8]}, expected one per new region {rids[:8]}")
+        per = defaultdict(set)
+        for ln in split_lines(v.text("map/unitstacks.txt"))[0]:
+            s_ = ln.split(";")
+            per[int(s_[0])].add(int(s_[1]))
+        best = set(Counter(tuple(sorted(per[p])) for p in per if v.types[p] == SEA).most_common(1)[0][0])
+        want_u = Counter()
+        for i in range(n0, n):
+            for t in best:
+                want_u[(i, t)] += 1
+        for i in newly:
+            if per.get(i):
+                for t in COAST_STACK_TYPES:
+                    if t not in per[i]:
+                        want_u[(i, t)] += 1
+        got_u = Counter((int(ln.split(";")[0]), int(ln.split(";")[1])) for ln in added["map/unitstacks.txt"])
+        if got_u != want_u:
+            extra, missing = got_u - want_u, want_u - got_u
+            probs.append(f"unitstacks.txt: unexpected added lines {sorted(extra)[:5]}, missing {sorted(missing)[:5]}")
+        pstate = v.province_state
+        want_b = Counter((i, t) for i in newly for t in PER_COAST)
+        got_b = Counter()
+        for ln in added["map/buildings.txt"]:
+            s_ = ln.split(";")
+            try:
+                c, r = game_to_pixel(float(s_[2]), float(s_[4]), H1)
+                p = int(pid[r, c % W1])
+                ok = (s_[1] in PER_COAST and p in newly and int(s_[0]) == pstate[p][0]
+                      and (s_[1] != "naval_base_spawn" or int(s_[6]) >= n0)
+                      and (s_[1] != "floating_harbor" or int(s_[6]) == p))
+            except (ValueError, IndexError, KeyError):
+                ok = False
+            if not ok:
+                probs.append(f"buildings.txt: unexpected added line {ln}")
+                break
+            got_b[(p, s_[1])] += 1
+        if got_b != want_b:
+            probs.append(f"buildings.txt: coastal lines of newly coastal provinces are not exactly one per type "
+                         f"(missing {sorted(want_b - got_b)[:5]}, extra {sorted(got_b - want_b)[:5]})")
+        return probs
+
     def check(self, ctx, build_id, out):
         v = ctx.vanilla
         top, right = self.pads(v, build_id)
@@ -420,18 +473,16 @@ class Exp08(Experiment):
             seen.update(block_ids(decode(p.read_bytes()), "provinces"))
         if set(seen) != set(range(n0, d.n)) or any(c != 1 for c in seen.values()):
             probs.append("padding provinces are not each in exactly one new region")
-        # appended-only text files
+        # appended-only text files, and exactly the expected appended lines
+        added = {}
         for rel in ("map/weatherpositions.txt", "map/unitstacks.txt", "map/buildings.txt"):
             van_l = split_lines(v.text(rel))[0]
             got_l = split_lines(decode((out / rel).read_bytes()))[0]
             if got_l[:len(van_l)] != van_l:
                 probs.append(f"{rel}: vanilla lines changed (only appending is allowed)")
+            added[rel] = got_l[len(van_l):]
         newly = {i for i in range(1, n0) if d.rows[i][5] != vd.rows[i][5]}
-        for ln in split_lines(decode((out / "map/buildings.txt").read_bytes()))[0][len(split_lines(v.text("map/buildings.txt"))[0]):]:
-            s = ln.split(";")
-            if s[1] not in PER_COAST:
-                probs.append(f"buildings.txt: unexpected added line {ln}")
-                break
+        probs += self.check_added(v, pid, types, newly, n0, d.n, added, region_files, H1)
         expected = {"map/definition.csv", "map/provinces.bmp", "map/world_normal.bmp", "map/trees.bmp",
                     "map/weatherpositions.txt", "map/unitstacks.txt", "map/buildings.txt", LOC} | set(FILL) | set(DDS_FILES)
         expected |= {p.relative_to(out).as_posix() for p in region_files}

@@ -9,8 +9,10 @@ filler would be written:
 
 * definition.csv   type sea -> lake, terrain ocean -> lakes (coastal false, continent 0 already)
 * unitstacks.txt   their naval position lines removed (124 of 126 vanilla lakes have none)
-Rasters stay as they are (heightmap 89, terrain index 15 = the off-globe plan),
-the region file stays (it becomes a lake-only region, vanilla has one).
+* strategicregions/113-South Pacific.txt   its ``naval_terrain`` line dropped: the region is
+                   now lake-only, like vanilla's lake-only 70-Caspian Sea (no naval_terrain)
+                   and EXP-09's filler regions
+Rasters stay as they are (heightmap 89, terrain index 15 = the off-globe plan).
 """
 from __future__ import annotations
 
@@ -31,6 +33,15 @@ REGION_FILE = "113-South Pacific.txt"
 REGION_ID = 113
 DEF = "map/definition.csv"
 STACKS = "map/unitstacks.txt"
+REGION = "map/strategicregions/" + REGION_FILE
+
+
+def drop_naval_terrain(text: str) -> str:
+    """Remove the single naval_terrain line of a region file; everything else byte-identical."""
+    new, n = re.subn(r"(?m)^[ \t]*naval_terrain\s*=\s*\w+[ \t]*\r?\n", "", text)
+    if n != 1:
+        raise KitError(f"expected exactly one naval_terrain line, found {n}")
+    return new
 
 
 def convert_to_lakes(d: Definition, ids) -> Definition:
@@ -111,6 +122,7 @@ class Exp06(Experiment):
         ids, ring = self.block(v)
         write_bytes(out, DEF, encode(convert_to_lakes(v.definition, ids).format()))
         write_bytes(out, STACKS, encode(drop_stacks(v.text(STACKS), ids)))
+        write_bytes(out, REGION, encode(drop_naval_terrain(v.region_files[REGION_FILE])))
         pid = np.asarray(v.pid)
         ys, xs = np.nonzero(np.isin(pid, ids))
         # sea provinces just west / east of the block, on its middle row, for the owner's fleet test
@@ -127,15 +139,16 @@ class Exp06(Experiment):
             prop=f"The {info['count']} sea provinces of the strategic region 'South Pacific' (the empty ocean "
                  "between New Zealand and South America, roughly between Pitcairn and the Chatham Islands) are "
                  "turned into lake provinces, the same way our map will fill the area outside the curved Equal "
-                 "Earth outline. The water still looks like ocean (same height and texture). Nothing else "
-                 "changes.",
+                 "Earth outline (their naval position lines are removed and their region loses its "
+                 "naval_terrain line, as lake-only regions have none). The water still looks like ocean (same "
+                 "height and texture). Nothing else changes.",
             why="Our map must fill the corners outside the globe with provinces that ships and armies can't "
                 "enter. This checks that such 'lake' ocean renders cleanly and that fleets route around it.",
             launch=texts.LAUNCH_DEBUG,
             steps=["Start a new game (1936) as the United States or the United Kingdom and pause.",
                    "Pan to the South Pacific (east of New Zealand, west of Chile). Take a screenshot at medium "
                    "zoom and one close up. Hover a few tiles: they should say lake (debug shows the province "
-                   f"number; the block is provinces {info['ids'][0]}..{info['ids'][-1]}, list in the kit).",
+                   "number; the block is the 39 provinces listed under 'GOOD TO KNOW').",
                    f"Select any fleet and order it to sea province {info['west']} (just west of the block), then to "
                    f"{info['east']} (just east of it). Screenshot the route line: it should go around the block, "
                    "never through it.",
@@ -144,10 +157,16 @@ class Exp06(Experiment):
                   "Does the block look like normal ocean? Any borders, colour seams, flicker, missing water?",
                   "Can a fleet enter the block (yes/no)? Does it route around it (yes/no)?",
                   "Map modes 'strategic region' and 'terrain': anything odd over the block?"],
-            expected=self.expected(build_id).text, cannot=["EXP-06"], user_dir=ctx.user)
+            expected=self.expected(build_id).text, cannot=["EXP-06"], user_dir=ctx.user,
+            notes=["The 39 lake provinces: " + ", ".join(str(i) for i in info["ids"]) + ".",
+                   "Their region ('South Pacific', 113) keeps its name and weather; only its naval_terrain line is "
+                   "removed, because it now holds lakes only (like vanilla's Caspian Sea region)."])
 
     def check(self, ctx, build_id, out):
-        probs = check_file_set(out, {DEF, STACKS}) + check_descriptor(self, build_id, out)
+        probs = check_file_set(out, {DEF, STACKS, REGION}) + check_descriptor(self, build_id, out)
+        rp = out / REGION
+        if rp.is_file() and decode(rp.read_bytes()) != drop_naval_terrain(ctx.vanilla.region_files[REGION_FILE]):
+            probs.append("region 113 differs by more than the dropped naval_terrain line")
         v = ctx.vanilla
         ids = set(block_ids(v.region_files[REGION_FILE], "provinces"))
         try:

@@ -42,7 +42,7 @@ def test_small_builds_are_byte_identical(ctx, tmp_path):
     """Build a few cheap experiments twice from the game install: identical SHA-256 per file."""
     from experiments.build import build_into
     from experiments.registry import resolve
-    for sel in ("EXP-01A", "EXP-05-3to1", "EXP-06"):
+    for sel in ("EXP-01-SEAM-A", "EXP-05-3to1", "EXP-06"):
         (exp, bid), = resolve(ctx, sel)
         outs = []
         for k in range(2):

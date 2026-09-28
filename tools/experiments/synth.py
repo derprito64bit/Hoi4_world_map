@@ -47,8 +47,9 @@ class Params:
 @dataclass
 class Layout:
     pid: np.ndarray                      # (H, W) int32 final province IDs
-    sea_new: list                        # new sea IDs (after the vanilla ones)
+    sea_new: list                        # all new sea IDs (sea_north first, then the southern ones)
     off_ids: list                        # new off-globe lake IDs
+    sea_north: list = field(default_factory=list)   # new sea IDs of the tiles above north_row
     lines: list = field(default_factory=list)       # list of [ids in one horizontal run of bars]
     anchors: dict = field(default_factory=dict)     # state id -> (row, col) of the landmark
     seam_fixes: list = field(default_factory=list)  # off-globe pixels given to sea at the seam (row, col)
@@ -68,13 +69,14 @@ def _put_bars(grid, ids, r0, c0, p: Params):
 
 
 def layout(globe: np.ndarray, units: list, anchors: list, sea_ids: list, next_id: int, p: Params = Params(),
-           centre_row: int | None = None) -> Layout:
+           centre_row: int | None = None, north_row: int | None = None) -> Layout:
     """Place bars, tile the sea and the off-globe area.
 
     units   : [(state id or None, [province ids in bar order])] for the central block, in order
     anchors : [(state id, [ids], row, col, align)] align in left/right/center; placed first
     sea_ids : vanilla sea IDs, in the order they take the sea tiles
     next_id : first free ID (new seas, then off-globe lakes)
+    north_row: sea tiles centred above this row get new IDs first (so their regions can get cold weather)
     """
     H, W = globe.shape
     grid = np.full((H, W), -1, dtype=np.int64)
@@ -129,11 +131,24 @@ def layout(globe: np.ndarray, units: list, anchors: list, sea_ids: list, next_id
     sea_mask = globe & ~placed
     lab, n = tile(sea_mask, p.sea_cell, p.sea_cell)
     lab, n = merge_small(lab, p.min_sea)
-    if n < len(sea_ids):
-        raise KitError(f"only {n} sea tiles for {len(sea_ids)} vanilla sea provinces; use a smaller sea cell")
-    sea_map = np.array(list(sea_ids) + list(range(next_id, next_id + n - len(sea_ids))), dtype=np.int64)
-    sea_new = list(range(next_id, next_id + n - len(sea_ids)))
-    next_id += n - len(sea_ids)
+    # tiles whose centre lies above north_row take new IDs (cold new regions); the vanilla sea IDs fill the
+    # following tiles in row-major order; the remaining (southern) tiles take new IDs as well
+    ys_, xs_ = np.nonzero(lab >= 0)
+    ls = lab[ys_, xs_]
+    cy = np.bincount(ls, weights=ys_, minlength=n) / np.maximum(np.bincount(ls, minlength=n), 1)
+    north = [k for k in range(n) if north_row is not None and cy[k] < north_row]
+    rest = [k for k in range(n) if not (north_row is not None and cy[k] < north_row)]
+    if len(rest) < len(sea_ids):
+        raise KitError(f"only {len(rest)} sea tiles for {len(sea_ids)} vanilla sea provinces; use a smaller sea cell")
+    sea_map = np.zeros(n, dtype=np.int64)
+    sea_north = list(range(next_id, next_id + len(north)))
+    sea_map[north] = sea_north
+    next_id += len(north)
+    sea_map[rest[:len(sea_ids)]] = list(sea_ids)
+    sea_south = list(range(next_id, next_id + len(rest) - len(sea_ids)))
+    sea_map[rest[len(sea_ids):]] = sea_south
+    next_id += len(sea_south)
+    sea_new = sea_north + sea_south
     grid[lab >= 0] = sea_map[lab[lab >= 0]]
     # off-globe lakes
     olab, m = tile(~globe, p.off_cell, p.off_cell)
@@ -166,5 +181,5 @@ def layout(globe: np.ndarray, units: list, anchors: list, sea_ids: list, next_id
                 seam_fixes.append((r1, c1))
                 break
     fix_x_crossings(pid, can_take)
-    return Layout(pid=pid, sea_new=sea_new, off_ids=off_ids, lines=lines, anchors=out_anchor,
+    return Layout(pid=pid, sea_new=sea_new, sea_north=sea_north, off_ids=off_ids, lines=lines, anchors=out_anchor,
                   seam_fixes=seam_fixes)

@@ -214,7 +214,10 @@ class Exp02(Experiment):
                   "(copy them exactly)."],
             expected=self.expected(build_id).text,
             cannot=["EXP-02"], user_dir=ctx.user,
-            notes=["Test the three variants (300, 600, 1200) one at a time, smallest first."])
+            notes=["Test the three variants (300, 600, 1200) one at a time, smallest first.",
+                   "Control: the normal game already loads land province 7855 (Alaska) at 280 px wide, so 280 px is "
+                   "known to work. The test provinces are 1-pixel-thin strips, and the host provinces differ between "
+                   "the widths; if only the 300-px variant fails, say so, because the strip shape could matter too."])
 
     def check(self, ctx, build_id, out):
         probs = check_file_set(out, {PROV}) + check_descriptor(self, build_id, out)

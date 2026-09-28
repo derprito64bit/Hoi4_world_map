@@ -16,7 +16,10 @@ whole map. Dependent files are updated so everything stays consistent:
 * railways.txt     where a rail step no longer touches, the shortest path through
                    the split family is inserted
 adjacencies.csv, supply_nodes.txt and weatherpositions.txt stay vanilla (IDs
-kept, the parent keeps its ID on the piece holding its port / centre).
+kept, the parent keeps its ID on the piece holding its port / centre). Provinces
+named in adjacencies.csv (strait ends and Through seas, canal land, impassable
+borders) are never split, so every strait keeps its vanilla contacts (r1 split
+province 761 in the 30k variant and lost its contact with strait sea 9092).
 
 EXP-04 rides in the 20k variant: three extra provinces of exactly 6, 7 and 8 px
 are carved out of the interior of three split pieces (IDs N-2, N-1, N).
@@ -34,7 +37,7 @@ from . import texts
 from .base import Expected, Experiment, check_descriptor, check_file_set
 from .bmpio import read_bmp, write_bmp
 from .common import KitError, decode, encode, fmt2, write_bytes
-from .mapdata import (LAND, SEA, Definition, adjacency_links, adjacency_pairs, append_ids, areas, coast_points, coastal_flags,
+from .mapdata import (LAND, SEA, Definition, adjacency_ids, adjacency_links, adjacency_pairs, append_ids, areas, coast_points, coastal_flags,
                       fix_x_crossings, game_xz, height_at, interior_points, new_colors, pid_from_rgb, rgb_from_pid,
                       x_crossings)
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, position_pixels, split_lines
@@ -137,7 +140,7 @@ def plan_pieces(area: np.ndarray, eligible, extra: int, min_px: int = MIN_CHILD)
 
 
 def subdivide(pid: np.ndarray, types: np.ndarray, extra: int, root_of: np.ndarray, keep_pixel: dict,
-              coastal_needed: set, min_px: int = MIN_CHILD):
+              coastal_needed: set, min_px: int = MIN_CHILD, frozen=frozenset()):
     """Add exactly ``extra`` land provinces by splitting connected land provinces.
 
     Returns (new pid, root_of) where root_of[id] = vanilla ancestor. The piece
@@ -159,7 +162,7 @@ def subdivide(pid: np.ndarray, types: np.ndarray, extra: int, root_of: np.ndarra
         objs = ndimage.find_objects(pid + 1)      # pid+1 so id 0 is label 1
         eligible = []
         for i in range(1, n):
-            if ty[i] != LAND or area[i] < 2 * min_px or objs[i] is None:
+            if ty[i] != LAND or area[i] < 2 * min_px or objs[i] is None or i in frozen:
                 continue
             sl = objs[i]
             m = pid[sl] == i
@@ -366,7 +369,8 @@ class Exp03(Experiment):
         for p, rc in centre.items():
             keep_pixel.setdefault(p, rc)
         coastal_needed = {i for i in range(1, n0) if types[i] == LAND and vdef.rows[i][5] == "true"}
-        pid, root = subdivide(van_pid, types, extra, np.arange(n0), keep_pixel, coastal_needed)
+        frozen = adjacency_ids(v.text("map/adjacencies.csv"))
+        pid, root = subdivide(van_pid, types, extra, np.arange(n0), keep_pixel, coastal_needed, frozen=frozen)
         smalls = []
         if small:
             split_members = {i for i in range(n0, len(root))}
@@ -500,7 +504,9 @@ class Exp03(Experiment):
         cannot = ["EXP-03"]
         notes = [f"This variant has {target:,} provinces (vanilla 13,413); the extra ones are pieces of vanilla "
                  "land provinces, so borders look busier. States, owners and everything else are unchanged.",
-                 "Test the variants in order 16k, 20k, 24k, 30k and stop at the first one that fails."]
+                 "Test the variants in order 16k, 20k, 24k, 30k and stop at the first one that fails.",
+                 "Provinces at the ends of straits, canals and blocked borders are never cut, so crossings such as "
+                 "the Danish straits or Lake Ontario work as in the normal game."]
         if info.get("smalls"):
             ids = ", ".join(f"{i} ({s} px, state file '{info['where'][i]}')" for i, s in info["smalls"])
             nums = ", ".join(str(i) for i, _ in info["smalls"])
@@ -574,6 +580,12 @@ class Exp03(Experiment):
             probs.append("EXP-04 provinces are not exactly 6, 7 and 8 px")
         if len(x_crossings(pid)[0]):
             probs.append("X-crossings present")
+        # provinces named in adjacencies.csv (straits, canals, impassable borders) keep their vanilla pixels,
+        # so every strait keeps its From/To-Through contact
+        adj = np.array(sorted(adjacency_ids(v.text("map/adjacencies.csv"))), dtype=np.int64)
+        m = np.isin(van, adj)
+        if not np.array_equal(np.isin(pid, adj), m) or (pid[m] != van[m]).any():
+            probs.append("a province named in adjacencies.csv changed shape")
         # states / regions: children appended to the parent's file, nothing else
         pstate, pregion = v.province_state, v.province_region
         exp_state, exp_region = defaultdict(list), defaultdict(list)

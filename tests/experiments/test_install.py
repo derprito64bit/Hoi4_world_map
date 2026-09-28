@@ -74,6 +74,16 @@ def test_refuses_missing_or_unset_user_dir(setup, tmp_path):
         inst.install("EXP-01A", tmp_path / "does-not-exist", build_root=build)
 
 
+def test_refuses_a_dir_that_is_not_a_hoi4_user_dir(setup, tmp_path):
+    _, build = setup
+    other = tmp_path / "not-hoi4"
+    other.mkdir()
+    (other / "readme.txt").write_text("x", encoding="utf-8")
+    with pytest.raises(KitError):
+        inst.install("EXP-01-UK-A", other, build_root=build)
+    assert sorted(p.name for p in other.iterdir()) == ["readme.txt"]
+
+
 def test_refuses_unbuilt(setup):
     user, build = setup
     with pytest.raises(KitError):

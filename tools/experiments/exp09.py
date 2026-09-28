@@ -30,6 +30,7 @@ from .mapdata import (LAKE, LAND, SEA, Definition, block_ids, coast_points, coas
 from .patchspec import BASELINE_ONLY, load_manifest, patched_files
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, split_lines
 from .synth import Params, layout
+from .weather import winter_icy
 
 W, H = 5120, 2304
 LON0, LAT_MIN, LAT_MAX = 10.9, -60.0, 90.0
@@ -38,7 +39,14 @@ T_LAND, T_WATER = 0, 15
 R_LAND, R_WATER = 255, 254
 CITIES = 15
 COLOR_SEED = 90009
-WEATHER_SRC = "112-"                    # Far South Pacific: weather for the new sea and filler regions
+# Weather for the new regions. North of NORTH_LAT (new seas) and the northern off-globe filler: vanilla
+# "88-Bering Sea" (every month -20..0 C, arctic_water 1.0 - the only vanilla sea region that is icy all winter).
+# South: vanilla "32-Southern Ocean" (2 C all year, the coldest southern sea region; vanilla has no icy southern
+# sea, and the vanilla shader draws ice only in the top 26 % of the map anyway).
+WEATHER_NORTH, WEATHER_SOUTH = "88-", "32-"
+NORTH_LAT = 50.0
+SHOT6_RADIUS = 40                       # px around the Chukotka / Alaska landmarks that screenshot 6 looks at
+SHOT6_STATES = (822, 463)               # Chukotka (Cape Dezhnev), Alaska (Cape Prince of Wales)
 REGION_CHUNK = 40
 LOC = "localisation/english/p00b_exp09_l_english.yml"
 COAST_STACK = (19, 20)
@@ -57,6 +65,31 @@ BASE_FILES = ["map/definition.csv", "map/provinces.bmp", "map/heightmap.bmp", "m
               "map/cities.bmp", "map/world_normal.bmp", "map/trees.bmp", DDS["colormap"], *DDS["water"], DDS["fow"],
               "map/adjacencies.csv", "map/buildings.txt", "map/unitstacks.txt", "map/weatherpositions.txt",
               "map/railways.txt", LOC]
+
+
+def shot6_water(pid: np.ndarray, types: np.ndarray, points, radius: int = SHOT6_RADIUS) -> list:
+    """Sea and lake provinces within ``radius`` px of the screenshot-6 landmark points (both seam sides)."""
+    out = set()
+    for r, c in points:
+        win = pid[max(0, r - radius):r + radius + 1, max(0, c - radius):c + radius + 1]
+        out |= {int(i) for i in np.unique(win) if types[i] in (SEA, LAKE)}
+    return sorted(out)
+
+
+def not_icy(ids, region_text_of) -> list:
+    """IDs whose strategic region is not below 0 C with snow/arctic water in Jan-Mar."""
+    return [i for i in ids if not winter_icy(region_text_of(i))]
+
+
+def region_texts(v, files: dict):
+    """Function id -> region file text, from the build's new region files, else vanilla."""
+    new = {}
+    for rel, data in files.items():
+        if rel.startswith("map/strategicregions/"):
+            t = decode(data)
+            for i in block_ids(t, "provinces"):
+                new[i] = t
+    return lambda i: new[i] if i in new else v.region_files[v.province_region[i][1]]
 
 
 def canvas():
@@ -133,7 +166,8 @@ class Exp09(Experiment):
         units, anchors, seas = self.units_and_anchors(v, cv)
         vdef = v.definition
         n0 = vdef.n
-        lay = layout(globe, units, anchors, seas, n0, Params())
+        north_row = int(cv.to_pixel(LON0, NORTH_LAT)[1])
+        lay = layout(globe, units, anchors, seas, n0, Params(), north_row=north_row)
         pid = lay.pid
         n = int(pid.max()) + 1
         types = np.concatenate([v.types, np.full(n - n0, SEA, dtype=np.int8)])
@@ -194,6 +228,11 @@ class Exp09(Experiment):
         files["map/adjacencies.csv"] = encode("\n".join([al[0]] + al[term:]))
         # regions for the new provinces
         files.update(self.new_regions(v, pid, lay, types))
+        # screenshot 6 compares ice on both sides of the outline: all water there must have icy winter weather
+        pts = [lay.anchors[s] for s in SHOT6_STATES]
+        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, files))
+        if bad:
+            raise KitError(f"EXP-09: water near the screenshot-6 landmarks has no icy winter weather: {bad[:10]}")
         centre = interior_points(pid)
         files.update(self.positions(v, pid, types, coast, lay, centre))
         # railways: every run of consecutive land bars
@@ -213,17 +252,34 @@ class Exp09(Experiment):
                             "anchors": lay.anchors, "off_ids": (lay.off_ids[0], lay.off_ids[-1])}
         return files
 
+    def weather_sources(self, v) -> dict:
+        """{'north': weather block, 'south': weather block}, checked: the northern one is icy in Jan-Mar."""
+        out = {}
+        for key, prefix in (("north", WEATHER_NORTH), ("south", WEATHER_SOUTH)):
+            name = next((f for f in sorted(v.region_files) if f.startswith(prefix)), None)
+            if name is None:
+                raise KitError(f"vanilla region {prefix}* not found")
+            out[key] = weather_block(v.region_files[name])
+        if not winter_icy(out["north"]):
+            raise KitError(f"{WEATHER_NORTH}* is not below 0 C with snow/arctic water in Jan-Mar in this game version")
+        return out
+
     def new_regions(self, v, pid, lay, types) -> dict:
-        src_name = next(f for f in sorted(v.region_files) if f.startswith(WEATHER_SRC))
-        weather = weather_block(v.region_files[src_name])
+        wx = self.weather_sources(v)
         rid = max(r for r, _ in v.province_region.values()) + 1
         files, loc = {}, ["﻿l_english:"]
-        for k in range(0, len(lay.sea_new), REGION_CHUNK):
-            ids = lay.sea_new[k:k + REGION_CHUNK]
-            name = f"EXP-09 extra sea {k // REGION_CHUNK + 1}"
-            files[f"map/strategicregions/{rid}-{name}.txt"] = encode(region_file(rid, name, ids, weather, "water_deep_ocean"))
-            loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
-            rid += 1
+        north = set(lay.sea_north)
+        groups = [("north", [i for i in lay.sea_new if i in north]), ("south", [i for i in lay.sea_new if i not in north])]
+        k_name = 0
+        for side, seas in groups:
+            for k in range(0, len(seas), REGION_CHUNK):
+                ids = seas[k:k + REGION_CHUNK]
+                k_name += 1
+                name = f"EXP-09 extra sea {k_name} ({side})"
+                files[f"map/strategicregions/{rid}-{name}.txt"] = encode(
+                    region_file(rid, name, ids, wx[side], "water_deep_ocean"))
+                loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
+                rid += 1
         ys, xs = np.nonzero(np.isin(pid, lay.off_ids))
         ids_at = pid[ys, xs]
         n = int(pid.max()) + 1
@@ -237,7 +293,8 @@ class Exp09(Experiment):
             if not quads[q]:
                 continue
             name = f"EXP-09 off-globe {q}"
-            body = region_file(rid, name, quads[q], weather, "none").replace("\tnaval_terrain=none\n", "")
+            side = "north" if q[0] == "N" else "south"
+            body = region_file(rid, name, quads[q], wx[side], "none").replace("\tnaval_terrain=none\n", "")
             files[f"map/strategicregions/{rid}-{name}.txt"] = encode(body)
             loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
             rid += 1
@@ -343,10 +400,20 @@ class Exp09(Experiment):
             files.update(patched_files(ctx.repo_root, ctx.game, var.shader_patches))
         return files
 
+    def shared_files(self, ctx) -> dict:
+        """The map files every variant carries, byte for byte (cached per process)."""
+        if getattr(self, "_shared", None) is None:
+            files = dict(self.base(ctx))
+            files.update(self.weather_for_new_regions(files))
+            self._shared = files
+        return self._shared
+
     def build(self, ctx, build_id, out: Path):
-        files = dict(self.base(ctx))
-        files.update(self.weather_for_new_regions(files))
-        files.update(self.variant_files(ctx, build_id))
+        files = dict(self.shared_files(ctx))
+        extra = self.variant_files(ctx, build_id)
+        if set(extra) & set(files):
+            raise KitError(f"variant files would overwrite shared map files: {sorted(set(extra) & set(files))}")
+        files.update(extra)
         for rel, data in sorted(files.items()):
             write_bytes(out, rel, data)
         return dict(self.layout_info, variant=build_id[len("EXP-09"):],
@@ -377,17 +444,25 @@ class Exp09(Experiment):
             "Start a new game (1936) with any country (e.g. the United States) and pause. Use the default "
             "(political) map mode.",
             "This is NOT the real world: see 'GOOD TO KNOW'. Use these places for the screenshots: "
-            f"{anchors}. The 'seam' is the left/right map edge at the equator (the middle of the height of "
-            "the map, where the ocean runs off the left edge and comes back on the right).",
-            "Screenshot 1: centred on the seam at the equator, fully zoomed out (scroll out until it stops).",
-            "Screenshot 2: same place, medium zoom (about half-way). Screenshot 3: same place, close zoom.",
+            f"{anchors}. The 'seam' is where the map wraps around (the left and right map edges). Near the "
+            "Chukotka and Alaska landmarks the empty lake filler outside the curved outline is widest; that is "
+            "where the edge look is tested. The curved outline must be in every frame (a camera centred exactly "
+            "on the map edge at the equator shows no outline at all).",
+            "Screenshot 1: fully zoomed out (scroll out until it stops), centred on the seam between the "
+            "Chukotka and Alaska landmarks.",
+            "Screenshot 2: medium zoom (about half-way), centred on the Chukotka landmark (Cape Dezhnev), the "
+            "curved edge and the filler beyond it in frame. Screenshot 3: close zoom (provinces clickable), same "
+            "place. Take 2 and 3 again at the Alaska landmark (Cape Prince of Wales).",
             "Screenshot 4: drag the camera as far north as it goes over the Greenland landmark, medium zoom. "
             "Screenshot 5: as far south as it goes over the Cape Horn landmark, medium zoom.",
-            "Screenshot 6 (winter; the 1936 start date, 1 January, is fine): fully zoomed in "
-            "at the Chukotka landmark (Cape Dezhnev, right edge) and at the Alaska landmark (Cape Prince of "
-            "Wales, left edge), one shot on each side of the seam, including the water just beyond the curved "
-            "edge. In variants d and e a ragged ice edge a few pixels outside the curve is expected.",
-            "Screenshot 7: zoom in and out fast, then pan fast across the seam; note flicker or popping.",
+            "Screenshot 6 (winter; the 1936 start date, 1 January, is fine): fully zoomed in at the Chukotka "
+            "landmark (Cape Dezhnev) and at the Alaska landmark (Cape Prince of Wales), one shot on each side of "
+            "the seam, including the water just beyond the curved edge. The weather there is set to Bering-Sea "
+            "winter on both sides of the curve, so variants a-c should show sea ice on both sides; in variants d "
+            "and e the ice should stop at the curve, with a ragged ice edge a few pixels outside it, while the ice "
+            "inside the curve stays. If a-c show no ice at all, say so (then this check is inconclusive).",
+            "Screenshot 7: at the Chukotka landmark, zoom in and out fast, then pan fast across the seam to the "
+            "Alaska landmark; note flicker or popping at the curved edge.",
             "Hover a tile beyond the curved edge: it should be a lake province; hover/click near the curve and "
             "check the right province is selected.",
         ]
@@ -415,6 +490,9 @@ class Exp09(Experiment):
                    "places: " + anchors + ".",
                    f"The area outside the curved outline is {info['off']} lake provinces coloured like ocean "
                    f"(provinces {info['off_ids'][0]}..{info['off_ids'][1]}); ships cannot enter them.",
+                   "Weather: the new sea regions north of 50 N and the northern filler use the vanilla Bering Sea "
+                   "weather (-20..0 C, arctic water all year), so there is winter ice to compare in screenshot 6; the "
+                   "southern ones use the vanilla Southern Ocean weather.",
                    "Use the same save/date and screen resolution for every variant (say which resolution)."])
 
     def check(self, ctx, build_id, out):
@@ -484,6 +562,19 @@ class Exp09(Experiment):
             seen.update(block_ids(decode(p.read_bytes()), "provinces"))
         if set(seen) != set(range(n0, d.n)) or any(c != 1 for c in seen.values()):
             probs.append("new provinces are not each in exactly one new region")
+        # shared base: every variant must carry exactly the same map files (only defines/shaders differ)
+        shared = self.shared_files(ctx)
+        for rel, data in sorted(shared.items()):
+            p = out / rel
+            if not p.is_file() or p.read_bytes() != data:
+                probs.append(f"{rel}: differs from the base shared by all variants")
+        # screenshot 6: water near the Chukotka / Alaska landmarks has icy winter weather in this build
+        got_regions = {p.relative_to(out).as_posix(): p.read_bytes()
+                       for p in (out / "map/strategicregions").glob("*.txt")}
+        pts = [tuple(self.layout_info["anchors"][s]) for s in SHOT6_STATES]
+        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, got_regions))
+        if bad:
+            probs.append(f"screenshot-6 water without icy winter weather: {bad[:10]}")
         # variant extras
         want = self.variant_files(ctx, build_id)
         for rel, data in want.items():

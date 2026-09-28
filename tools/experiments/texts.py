@@ -77,6 +77,8 @@ def readme(build_id: str, title: str, *, prop: str, why: str, launch: str, steps
     parts += ["", "WHAT TO SEND BACK"]
     for s in list(send) + [f"The whole error log: {log} (say 'empty' if it has no lines)."]:
         parts.append(_wrap(f"- {s}"))
+    notes = list(notes) + ["If the mod does not show up in the launcher after running install.py, report that "
+                           "(the .mod file carries a '#' comment line the launcher is assumed to accept)."]
     if notes:
         parts += ["", "GOOD TO KNOW"]
         for s in notes:
