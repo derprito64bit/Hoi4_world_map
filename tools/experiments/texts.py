@@ -47,7 +47,7 @@ def _wrap(s: str, indent: str = "") -> str:
 
 
 def readme(build_id: str, title: str, *, prop: str, why: str, launch: str, steps: list, send: list,
-           expected: str, cannot: list, user_dir: Path | None, notes: list = (),
+           expected: str, cannot: list, user_dir: Path | None, notes: list = (), cannot_extra: list = (),
            heading: str = "THE ONE THING THIS TEST CHANGES (compared with the normal game)") -> str:
     """One-page owner sheet. ``steps`` are the experiment-specific actions after the game has started."""
     ud = str(user_dir).replace("\\", "/") if user_dir else "$HOI4_USER_DIR"
@@ -89,6 +89,8 @@ def readme(build_id: str, title: str, *, prop: str, why: str, launch: str, steps
     parts += ["WHAT THIS TEST CANNOT PROVE"]
     for c in cannot:
         parts.append(_wrap(f"- {c}: {CANNOT_PROVE[c]}"))
+    for c in cannot_extra:                         # build-specific limits beyond the to-check table
+        parts.append(_wrap(f"- {c}"))
     return "\n".join(parts).rstrip() + "\n"
 
 

@@ -36,3 +36,10 @@ def test_readme_sections(tmp_path):
                  CANNOT_PROVE["EXP-05"]):
         assert part in r, part
     assert r.rstrip().endswith(CANNOT_PROVE["EXP-05"])
+
+
+def test_readme_extra_limits_follow_the_table(tmp_path):
+    r = readme("EXP-02b-block-400", "blocks", prop="p", why="w", launch="l", steps=[], send=[], expected="e",
+               cannot=["EXP-02"], cannot_extra=["one filled province is not a full map"], user_dir=tmp_path)
+    tail = r.rstrip().split("WHAT THIS TEST CANNOT PROVE")[1].strip().splitlines()
+    assert tail == [f"- EXP-02: {CANNOT_PROVE['EXP-02']}", "- one filled province is not a full map"]
