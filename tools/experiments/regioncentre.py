@@ -237,14 +237,36 @@ def describe(c: RegionCentre) -> str:
             f"margin {c.margin}{', wraps' if c.seam else ''})")
 
 
-def guard_problems(centres: dict, observed: dict | None = None, clear_ids=None) -> list:
+def split_known(fails: list, centres: dict, known: dict | None) -> tuple:
+    """(remaining failures, [known-risk notes]) for ``known`` = {region id: (member-box signature, reason)}.
+
+    A failure is allowed only when its region is listed AND its signature matches exactly (same member
+    boxes, hence the same mean, rect and divisors); any other failure, or a changed signature, stays.
+    """
+    known = known or {}
+    rest, notes = [], []
+    for r in fails:
+        k = known.get(r)
+        if k is not None and centres[r].signature == k[0]:
+            notes.append(f"KNOWN RISK (allowed): region {describe(centres[r])}, signature {k[0]}: {k[1]}")
+        else:
+            rest.append(r)
+    return rest, notes
+
+
+def guard_problems(centres: dict, observed: dict | None = None, clear_ids=None, known: dict | None = None,
+                   notes: list | None = None) -> list:
     """--check messages (P00b-f4): guard failures, and regions whose mean is not >= 1 px inside a member box.
 
     ``observed``: centres of a map seen loading (vanilla) for the wrapping-region twin rule; {} for new
     geometry. ``clear_ids``: the regions that must never take the fallback (None = all of them).
+    ``known``: {region id: (signature, reason)} accepted as a documented known risk (``split_known``);
+    their notes are appended to ``notes``.
     """
     probs = []
-    fails = guard_failures(centres, observed)
+    fails, known_notes = split_known(guard_failures(centres, observed), centres, known)
+    if notes is not None:
+        notes.extend(known_notes)
     if fails:
         probs.append(f"region-centre guard: {len(fails)} regions fail (fallback with divisor 0, or a wrapping "
                      "fallback without an identical vanilla twin): "

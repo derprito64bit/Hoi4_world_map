@@ -25,9 +25,12 @@ a pixel (the padding is new provinces only; with top padding alone, a 3x4-px new
 straddling the wrap seam above the old top edge avoids the seam X-crossing and has a
 region of its own), every vanilla region's centre calculation stays identical, and
 every new region's mean lies >= 1 px inside a member box (``regiongroup.grow_regions``).
-Known limit: at 6144 px the vanilla wrap regions no longer reach the right edge W-1;
+Known risk: at 6144 px the vanilla wrap regions no longer reach the right edge W-1;
 region 178 (fallback, dy 0 in vanilla, where it wraps) then fails the guard, and no
-padding layout can change that (its members and boxes are vanilla's).
+padding layout can change that (its members and boxes are vanilla's). Overwatch
+accepted it for the owner run (P00b-f4 r2): ``KNOWN_RISK`` allows exactly that region
+with exactly its vanilla member-box signature in EXP-08-6144x2560, and the README tells
+the owner what to send back if the game crashes.
 Expected validator finding: ERROR AREA_TOO_LARGE (the property under test).
 """
 from __future__ import annotations
@@ -67,6 +70,20 @@ DEFAULT_WEATHER_REGION = 46          # Barents Sea, if a tile touches no vanilla
 COAST_STACK_TYPES = (19, 20)
 SEAM_PATCH = (3, 2)                  # rows x columns per side of the seam patch province (box >= 3 px each way)
 REGION_MAX = 24                      # padding provinces per new region
+CRASH_RVA = 0x15A4CDC                # hoi4.exe 1.19.3 region-centre idiv (EXP-03-24k dumps, P00b-f3)
+# Region-centre guard failures accepted as documented known risks (overwatch decision P00b-f4 r2, option b):
+# {build id: {region id: (member-box signature, reason)}}. Matched by the exact signature: any other failure,
+# or any change to these members' boxes, still fails --check and diag03.
+KNOWN_RISK = {
+    "EXP-08-6144x2560": {
+        178: ("cbe28192ad55b4ec",
+              "vanilla West Polynesia wraps the seam in vanilla (fallback, dy 0, loads); at 6144 px it no longer "
+              "touches the right edge, and its members and boxes are vanilla's, so no padding layout can change "
+              "it. The observed crash divisor is dx (here -748); dy 0 is flagged only conservatively. The owner "
+              "run decides it: a crash at hoi4.exe+0x15A4CDC means the dy division is real, a crash elsewhere "
+              "points at the canvas size (or another cause), loading means dy 0 on the fallback is harmless."),
+    },
+}
 
 
 def pad_array(a: np.ndarray, top: int, right: int, fill) -> np.ndarray:
@@ -188,17 +205,18 @@ def _centre_path(c) -> tuple:
     return (c.n, c.mean, c.rect, c.fallback, c.fallback_strict, c.fallback_all, c.dx, c.dy, c.margin, c.signature)
 
 
-def centre_problems(v, pid: np.ndarray, new_texts: dict) -> list:
+def centre_problems(v, pid: np.ndarray, new_texts: dict, known: dict | None = None,
+                    notes: list | None = None) -> list:
     """Region-centre guard for a padded map: 0 guard failures (vanilla twins count for wrapping regions),
     every vanilla region's centre calculation identical to vanilla's, every new region's mean >= 1 px
-    inside a member box."""
+    inside a member box. ``known``: this build's KNOWN_RISK entries (their notes go to ``notes``)."""
     try:
         regions, new_ids = layered_regions(v, new_texts)
         cs = region_centres(pid, regions)
     except KitError as e:
         return [f"region-centre guard: {e}"]
     van = vanilla_centres(v)
-    probs = guard_problems(cs, van, clear_ids=new_ids)
+    probs = guard_problems(cs, van, clear_ids=new_ids, known=known, notes=notes)
     moved = [r for r in sorted(van) if r not in cs or _centre_path(cs[r]) != _centre_path(van[r])]
     if moved:
         probs.append(f"region-centre guard: {len(moved)} vanilla regions changed their centre calculation "
@@ -421,7 +439,12 @@ class Exp08(Experiment):
                    "Unpause and let a few days pass."],
             send=["Loaded: yes / no; loading time (seconds).",
                   "Screenshots of the edges; describe anything misaligned or stretched.",
-                  "Did the game run normally for a few days (yes/no)?"],
+                  "Did the game run normally for a few days (yes/no)?"]
+            + (["If the game crashes: open the newest folder in Documents/Paradox Interactive/Hearts of Iron IV/"
+                "crashes/ and copy two lines from exception.txt: the line that starts with 'Unhandled Exception' "
+                "and the first line of the stack below it (overwatch can also read the folder directly).",
+                "If it crashes: does Documents/Paradox Interactive/Hearts of Iron IV/logs/game.log contain a line "
+                "'Loaded N provinces' (yes/no; copy it if yes)?"] if KNOWN_RISK.get(build_id) else []),
             expected=self.expected(build_id).text, cannot=["EXP-08"], user_dir=ctx.user,
             notes=["Fog-of-war texture: the full-size level keeps the normal game's data exactly, but its smaller "
                    "zoom levels are recomputed by the kit for the whole map. Slight blockiness of fog/water shine at "
@@ -436,7 +459,14 @@ class Exp08(Experiment):
                 "vanilla sea would have to grow into the new ocean (that would move its strategic region's centre, "
                 "the EXP-03-24k crash mechanism). It has a strategic region of its own. A 'TOO LARGE BOX' or "
                 "similar line for this province in error.log would come from it crossing the edge, not from the "
-                "canvas size: report it."] if info.get("seam_patch") else []))
+                "canvas size: report it."] if info.get("seam_patch") else [])
+            + ([f"Known risk in this build: the Pacific strategic region {', '.join(map(str, KNOWN_RISK[build_id]))} "
+                "(West Polynesia) used to wrap around the left/right map edge; with the extra columns at the right "
+                "it no longer does, and the game may then divide by zero while computing that region's centre. A "
+                f"crash at hoi4.exe+0x{CRASH_RVA:X} (that address appears in the exception line) is this "
+                "region-centre problem, NOT the map size. A crash at any other address points at the map size or "
+                "something else. If it loads, this risk is harmless. Every outcome is useful: just send the lines "
+                "asked for above."] if KNOWN_RISK.get(build_id) else []))
 
     # ------------------------------------------------------------ check
     def check_added(self, v, pid, types, newly, n0, n, added, region_files, H1) -> list:
@@ -584,7 +614,8 @@ class Exp08(Experiment):
         if set(seen) != set(range(n0, d.n)) or any(c != 1 for c in seen.values()):
             probs.append("padding provinces are not each in exactly one new region")
         # region-centre guard (P00b-f4): vanilla regions keep their centre path, new regions never fall back
-        probs += centre_problems(v, pid, {p.name: decode(p.read_bytes()) for p in region_files})
+        probs += centre_problems(v, pid, {p.name: decode(p.read_bytes()) for p in region_files},
+                                 known=KNOWN_RISK.get(build_id), notes=getattr(self, "check_notes", None))
         # appended-only text files, and exactly the expected appended lines
         added = {}
         for rel in ("map/weatherpositions.txt", "map/unitstacks.txt", "map/buildings.txt"):

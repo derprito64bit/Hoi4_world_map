@@ -66,10 +66,13 @@ def check_one(ctx, exp, bid) -> bool:
         print(f"FAIL {bid}: not built (run build.py {bid} first)")
         return False
     t0 = time.time()
+    exp.check_notes = []                  # documented known risks the check allowed: printed, not failures
     try:
         probs = exp.check(ctx, bid, out)
     except KitError as e:
         probs = [str(e)]
+    for n in exp.check_notes:
+        print(f"NOTE {bid}: {n}")
     if probs:
         print(f"FAIL {bid}: extra differences vs vanilla:")
         for p in probs:

@@ -256,3 +256,9 @@ def test_exp09_check_catches_a_region_on_the_fallback_path(ctx, exp09_builds):
     finally:
         restore()
     assert e.check(ctx, bid, out) == []
+
+
+def test_exp08_known_risk_signature_is_vanilla_region_178(ctx):
+    """The allowance matches vanilla's own member boxes of region 178 (unchanged in the 6144 build)."""
+    from experiments.exp08 import KNOWN_RISK, vanilla_centres
+    assert vanilla_centres(ctx.vanilla)[178].signature == KNOWN_RISK["EXP-08-6144x2560"][178][0]

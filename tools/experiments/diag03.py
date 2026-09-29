@@ -12,6 +12,8 @@ centre model of ``regioncentre.py``: how many regions take the engine's fallback
 path, which of them divide by zero (the EXP-03-24k crash), and which wrapping
 regions the model cannot judge (``unknown``). Exit 1 if any build has a guard
 failure: an unsafe region, or an unknown one without an identical vanilla twin.
+Failures listed in ``exp08.KNOWN_RISK`` for that build ID with the exact member-box
+signature are printed as "KNOWN RISK (allowed)" and do not count.
 """
 from __future__ import annotations
 
@@ -27,7 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.bmpio import read_bmp  # noqa: E402
 from experiments.common import BUILD_ROOT, KitError, decode, game_dir  # noqa: E402
 from experiments.mapdata import Definition, adjacency_pairs, areas, block_ids, pid_from_rgb  # noqa: E402
-from experiments.regioncentre import guard_failures, region_centres  # noqa: E402
+from experiments.exp08 import KNOWN_RISK  # noqa: E402
+from experiments.regioncentre import guard_failures, region_centres, split_known  # noqa: E402
 
 FOUR = [[0, 1, 0], [1, 1, 1], [0, 1, 0]]
 
@@ -104,7 +107,7 @@ def report(label: str, build: Path | None, game: Path, observed: dict | None = N
     cs = region_centres(pid, load_regions(build, game))
     names = region_names(build, game)
     observed = cs if observed is None else observed
-    fails = guard_failures(cs, observed)
+    fails, known = split_known(guard_failures(cs, observed), cs, KNOWN_RISK.get(label))
     fb = [c for c in cs.values() if c.fallback]
     near = sorted((c for c in fb if not c.seam), key=lambda c: (min(abs(c.dx), abs(c.dy)), c.region))[:3]
     unknown = [c for c in cs.values() if c.unknown]
@@ -124,6 +127,9 @@ def report(label: str, build: Path | None, game: Path, observed: dict | None = N
         tag = "identical in vanilla, observed loading" if twin is not None and twin.signature == c.signature else "NEW"
         print(f"   unknown region {c.region} {names.get(c.region, '?')}: wraps the seam, {c.n} provinces, "
               f"dx {c.dx}, dy {c.dy} -> {tag}")
+    for n in known:                       # documented, signature-matched known risks (exp08.KNOWN_RISK)
+        print(f"   {n}")
+    print(f"   guard failures {len(fails)}" + (f" (+ {len(known)} KNOWN RISK allowed)" if known else ""))
     return fails, cs
 
 

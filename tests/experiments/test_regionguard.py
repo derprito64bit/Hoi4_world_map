@@ -210,3 +210,67 @@ def test_exp09_centre_problems_reject_strips_and_accept_runs():
     wrap[0:5, 0:5], wrap[35:40, W - 5:] = 7, 8
     probs = centre_problems(v, wrap, {"2.txt": region_text(2, [9]), "3.txt": region_text(3, [7, 8])})
     assert any("1 regions fail" in p and "wraps" in p for p in probs)
+
+
+# ---------------------------------------------------------------- r2: documented known risk (EXP-08-6144 region 178)
+def wrap_loss_world():
+    """Vanilla region 5 wraps (fallback, dy 0); padded by 20 columns at the right it no longer does."""
+    H, W = 60, 100
+    pid = np.full((H, W), 1, dtype=np.int32)
+    pid[20:30, 0:10] = 2
+    pid[20:30, 90:100] = 3
+    v = stub_vanilla(pid, {4: [1], 5: [2, 3]})
+    wide = np.full((H, W + 20), 6, dtype=np.int32)
+    wide[:, :W] = pid
+    return v, wide, region_centres(pid, {5: [2, 3]})[5].signature
+
+
+def test_known_risk_with_the_exact_signature_is_allowed_and_noted():
+    from experiments.exp08 import centre_problems
+    v, wide, sig = wrap_loss_world()
+    notes = []
+    probs = centre_problems(v, wide, {"7.txt": region_text(7, [6])}, known={5: (sig, "test reason")}, notes=notes)
+    assert probs == []
+    assert len(notes) == 1 and notes[0].startswith("KNOWN RISK (allowed): region 5 ") and "test reason" in notes[0]
+
+
+def test_known_risk_never_hides_a_changed_signature_or_another_failure():
+    from experiments.exp08 import centre_problems
+    v, wide, sig = wrap_loss_world()
+    notes = []
+    probs = centre_problems(v, wide, {"7.txt": region_text(7, [6])}, known={5: ("0" * 16, "stale")}, notes=notes)
+    assert notes == [] and any("1 regions fail" in p and "5 (" in p for p in probs)
+    # the member boxes change (a vanilla pixel moves): signature and centre path differ -> fails
+    moved = wide.copy()
+    moved[30, 0:10] = 2
+    probs = centre_problems(v, moved, {"7.txt": region_text(7, [6])}, known={5: (sig, "r")}, notes=notes)
+    assert notes == [] and any("changed their centre calculation" in p for p in probs)
+    assert any("1 regions fail" in p for p in probs)
+    # an allowance for another region does not cover region 5
+    probs = centre_problems(v, wide, {"7.txt": region_text(7, [6])}, known={4: (sig, "wrong region")}, notes=notes)
+    assert notes == [] and any("1 regions fail" in p for p in probs)
+
+
+def test_split_known_matches_region_and_signature():
+    from experiments.regioncentre import split_known
+    pid = tiles(20, 60, 10, 20)
+    cs = region_centres(pid, {1: [1, 2], 2: [3, 4]})
+    assert guard_failures(cs, {}) == [1, 2]
+    rest, notes = split_known([1, 2], cs, {1: (cs[1].signature, "why"), 2: (cs[1].signature, "wrong sig")})
+    assert rest == [2] and len(notes) == 1 and "region 1 " in notes[0]
+
+
+def test_exp08_known_risk_is_only_region_178_in_6144():
+    from experiments.exp08 import KNOWN_RISK
+    assert set(KNOWN_RISK) == {"EXP-08-6144x2560"} and set(KNOWN_RISK["EXP-08-6144x2560"]) == {178}
+
+
+def test_exp08_6144_readme_asks_for_the_crash_lines():
+    from experiments.exp08 import Exp08
+    info = {"top": 512, "right": 512, "new": 148, "newly_coastal": [], "seam_patch": []}
+    ctx = SimpleNamespace(user=None)
+    r = Exp08().readme(ctx, "EXP-08-6144x2560", info)
+    assert "Unhandled Exception" in r and "exception.txt" in r and "Loaded N provinces" in r
+    assert "+0x15A4CDC" in r and "NOT the map size" in r
+    r2 = Exp08().readme(ctx, "EXP-08-5632x2560", dict(info, right=0, seam_patch=[13511]))
+    assert "Unhandled Exception" not in r2 and "13511" in r2
