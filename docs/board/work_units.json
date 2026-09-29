@@ -98,10 +98,27 @@
       "depends_on": [
         "P00b-f2"
       ],
-      "status": "in_progress",
+      "status": "review",
       "branch": "wu/P00b-f3",
       "attempts": 1,
-      "notes": "crash dump crashes/hoi4_20260929_074145; must identify which generated property triggers it so P05 avoids it"
+      "notes": "crash dump crashes/hoi4_20260929_074145; must identify which generated property triggers it so P05 avoids it; r1 4c0388f: root cause region-centre div0 (region 191 in 24k); variants 24k-fix, div0"
+    },
+    {
+      "id": "P00b-f4",
+      "phase": "P00",
+      "title": "EXP-09: apply region-centre guard (region 113 predicted div0 in a-e)",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/experiments/**",
+        "tests/experiments/**"
+      ],
+      "depends_on": [
+        "P00b-f3"
+      ],
+      "status": "todo",
+      "branch": "wu/P00b-f4",
+      "attempts": 0,
+      "notes": "from P00b-f3 side finding"
     }
   ]
 }
