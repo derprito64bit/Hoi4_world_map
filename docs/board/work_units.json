@@ -117,8 +117,8 @@
       ],
       "status": "in_progress",
       "branch": "wu/P00b-f4",
-      "attempts": 1,
-      "notes": "from P00b-f3 side finding"
+      "attempts": 3,
+      "notes": "r1 79d3ab2 (6144/178 conflict), r2 7cc90e6 KNOWN_RISK 178 (overwatch decision: option b, crash address discriminates); review 0/1/5 -> r3 readme (seam province 13511)"
     }
   ]
 }
