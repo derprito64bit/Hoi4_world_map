@@ -1,6 +1,12 @@
 """EXP-02b: larger province-size variants of EXP-02 (owner request after EXP-02-300/600/1200 loaded).
 
-Three builds, each changing one property against vanilla 1.19.3:
+Four builds (owner run order: strip-full, block-400, block-800-sea, block-800-land),
+each changing one property against vanilla 1.19.3. block-400 keeps one land and one
+sea host in one build; block-800 is split into a sea-only and a land-only build so
+the 800-px sea box is not confounded by the land host's ~1000 neighbours. Every
+build records its side effects (host neighbour counts vs vanilla's maximum,
+donors, enclaves, moved lines, newly non-contiguous states and strategic regions)
+in the build info and prints them in its README (``side_effects``).
 
 * ``EXP-02b-strip-full`` -- the EXP-02 strip method (``exp02.widen``) pushed to the
   widest span the map allows: the sea strip runs through the all-sea rows at the
@@ -12,7 +18,7 @@ Three builds, each changing one property against vanilla 1.19.3:
   and weather positions, so positions on strip pixels are relocated into their
   own province (as in the block builds) instead of being avoided. Widths were
   found with ``widest_strip`` (5,629 px, the non-seam maximum, has no valid host).
-* ``EXP-02b-block-400`` / ``-800`` -- one land and one sea province become a
+* ``EXP-02b-block-400`` / ``-800-sea`` / ``-800-land`` -- a province becomes a
   solid, filled square of 400 x 400 / 800 x 800 px. The host province lies inside
   the square; it takes over the pixels of every *eligible donor* inside the
   square (same kind, not protected, see ``protected_ids``). A donor that also
@@ -38,8 +44,11 @@ Consistency rules (checked at build and again by ``--check``):
 
 Side effects that follow from the property and are documented, not hidden: a
 donor that lies wholly inside the square becomes a small enclave of the host,
-so its state can become non-contiguous (``--check`` allows that only for states
-that contain a donor) and its sea/land neighbours change.
+so its state and strategic region can become non-contiguous (``--check`` allows
+that only for states / regions that contain a donor) and its neighbours change.
+Donors keep at least ``REMNANT`` px (or all of their pixels if they had fewer),
+and moved position lines take y from the heightmap (sea level 9.50); ``--check``
+enforces both.
 """
 from __future__ import annotations
 
@@ -302,6 +311,10 @@ def position_problems(v, van: np.ndarray, got: np.ndarray, rel: str, text: str |
         want = position_owner(rel, la, van, px)
         if q is None or int(got[q]) != want or diff[q]:
             probs.append(f"{rel} line {i + 1}: moved position is not on an unchanged pixel of province {want}")
+            continue
+        y = fmt2(height_at(v.heightmap, q[0], q[1]))     # heightmap / 10, never below sea level 9.50
+        if sb[cols[1]] != y:
+            probs.append(f"{rel} line {i + 1}: moved position has height y={sb[cols[1]]}, the heightmap gives {y}")
     return probs
 
 
@@ -312,6 +325,20 @@ def noncontiguous_states(pid: np.ndarray, types: np.ndarray, province_state: dic
     for p, (sid, _) in province_state.items():
         if 0 < p < len(types) and types[p] == LAND:
             by_state.setdefault(sid, []).append(p)
+    return noncontiguous_groups(pid, by_state, links)
+
+
+def noncontiguous_regions(pid: np.ndarray, province_region: dict, links: set) -> set:
+    """Strategic-region IDs whose provinces (land, sea and lake) are not connected (pixel contacts + adjacencies)."""
+    by_region = {}
+    for p, (rid, _) in province_region.items():
+        by_region.setdefault(rid, []).append(p)
+    return noncontiguous_groups(pid, by_region, links)
+
+
+def noncontiguous_groups(pid: np.ndarray, groups: dict, links: set) -> set:
+    """Keys of ``groups`` ({key: [province ids]}) whose members are not connected by contacts or links."""
+    by_state = groups
     parent = {}
 
     def find(x):
@@ -331,6 +358,12 @@ def noncontiguous_states(pid: np.ndarray, types: np.ndarray, province_state: dic
     return {s for s, ps in by_state.items() if len({find(p) for p in ps}) > 1}
 
 
+def neighbour_counts(pid: np.ndarray, n: int) -> np.ndarray:
+    """Number of distinct 4-adjacent provinces per ID (wrap included)."""
+    pairs = adjacency_pairs(pid)
+    return np.bincount(pairs.ravel(), minlength=n)
+
+
 def rail_gaps(text: str, pairs: set) -> list:
     out = []
     for n, ln in enumerate(text.splitlines(), 1):
@@ -342,12 +375,15 @@ def rail_gaps(text: str, pairs: set) -> list:
 
 
 # ------------------------------------------------------------------ block rules on a finished map
-def block_problems(v, van: np.ndarray, got: np.ndarray, size: int, protected: set) -> list:
-    """Every rule of a block build, on the finished province map (positions are checked separately)."""
+def block_problems(v, van: np.ndarray, got: np.ndarray, size: int, kinds, protected: set) -> list:
+    """Every rule of a block build (one square per kind in ``kinds``) on the finished province map.
+
+    Positions are checked separately (``position_problems``).
+    """
     probs = []
     types = v.types
     n = len(types)
-    spec = BLOCKS[size]
+    spec = {k: BLOCKS[size][k] for k in kinds}
     diff = got != van
     allowed_px = np.zeros(van.shape, dtype=bool)
     hosts = {}
@@ -371,17 +407,20 @@ def block_problems(v, van: np.ndarray, got: np.ndarray, size: int, protected: se
         a_van = areas(van, n)
         in_sq = np.bincount(van[r0:r0 + size, c0:c0 + size].ravel(), minlength=n)
         left = np.bincount(got[r0:r0 + size, c0:c0 + size].ravel(), minlength=n)
+        a_got = areas(got, n)
         for d in donors:
             cap = max(0, REMNANT - int(a_van[d] - in_sq[d])) + XFIX_SLACK
             if left[d] > cap:
                 probs.append(f"donor {d} keeps {int(left[d])} px inside the square (at most {cap}): block not filled")
+            if a_got[d] < min(REMNANT, int(a_van[d])):
+                probs.append(f"donor {d} keeps {int(a_got[d])} px, below the {REMNANT}-px remnant the README promises")
     if (diff & ~allowed_px).any():
         bad = sorted(set(van[diff & ~allowed_px].tolist()))
         probs.append(f"pixels changed outside the allowed donors of the squares: provinces {bad[:10]}")
     if (types[van[diff]] != types[got[diff]]).any():
         probs.append("a re-assignment changed the type (land/sea/lake) of some pixels")
     if not set(got[diff].tolist()) <= set(hosts.values()):
-        probs.append("changed pixels belong to a province other than the two hosts")
+        probs.append(f"changed pixels belong to a province other than the host(s) {sorted(hosts.values())}")
     a = areas(got, n)
     if (a[1:] < MIN_PX).any():
         probs.append(f"provinces below {MIN_PX} px: {(np.nonzero(a[1:] < MIN_PX)[0][:10] + 1).tolist()}")
@@ -411,6 +450,13 @@ def block_problems(v, van: np.ndarray, got: np.ndarray, size: int, protected: se
         probs.append(f"states became contiguous (unexpected): {sorted(nc0 - nc1)[:10]}")
     if nc1 - nc0 - donor_states:
         probs.append(f"states without a donor became non-contiguous: {sorted(nc1 - nc0 - donor_states)[:10]}")
+    donor_regions = {v.province_region[p][0] for p in shrunk if p in v.province_region}
+    rc0 = noncontiguous_regions(van, v.province_region, links)
+    rc1 = noncontiguous_regions(got, v.province_region, links)
+    if rc0 - rc1:
+        probs.append(f"strategic regions became contiguous (unexpected): {sorted(rc0 - rc1)[:10]}")
+    if rc1 - rc0 - donor_regions:
+        probs.append(f"strategic regions without a donor became non-contiguous: {sorted(rc1 - rc0 - donor_regions)[:10]}")
     return probs
 
 
@@ -488,34 +534,90 @@ def find_sites(v, kind: int, n: int, step: int = 16, protected: set | None = Non
     return res[:limit]
 
 
+# ------------------------------------------------------------------ side effects (recorded in _meta and the README)
+def side_effects(v, van: np.ndarray, got: np.ndarray, hosts: dict, moved: dict) -> dict:
+    """What the build changes besides the box: host neighbour counts, donors, enclaves, moved lines, contiguity."""
+    n = len(v.types)
+    nb_van, nb_got = neighbour_counts(van, n), neighbour_counts(got, n)
+    diff = got != van
+    donors = sorted(set(np.unique(van[diff]).tolist()) - set(hosts.values()))
+    touch = {}
+    for a, b in adjacency_pairs(got).tolist():
+        touch.setdefault(a, set()).add(b)
+        touch.setdefault(b, set()).add(a)
+    hs = set(hosts.values())
+    enclaves = [d for d in donors if touch.get(d, set()) <= hs]
+    links = adjacency_links(v.text("map/adjacencies.csv"))
+    states = sorted(noncontiguous_states(got, v.types, v.province_state, links)
+                    - noncontiguous_states(van, v.types, v.province_state, links))
+    regions = sorted(noncontiguous_regions(got, v.province_region, links)
+                     - noncontiguous_regions(van, v.province_region, links))
+    return {"neighbours": {KIND_NAME[k]: int(nb_got[h]) for k, h in sorted(hosts.items())},
+            "neighbours_before": {KIND_NAME[k]: int(nb_van[h]) for k, h in sorted(hosts.items())},
+            "vanilla_max_neighbours": int(nb_van[1:].max()), "donor_count": len(donors),
+            "enclaves": len(enclaves), "moved": dict(sorted(moved.items())), "moved_total": int(sum(moved.values())),
+            "new_noncontiguous_states": states, "new_noncontiguous_regions": regions}
+
+
+def _ids(xs, limit: int = 40) -> str:
+    return (", ".join(str(x) for x in xs[:limit]) + (" ..." if len(xs) > limit else "")) if xs else "none"
+
+
 # ------------------------------------------------------------------ experiment
+# block builds: suffix -> (square size, kinds); block-800 is split so each 800-px host is tested on its own
+BLOCK_BUILDS = {"block-400": (400, (LAND, SEA)), "block-800-sea": (800, (SEA,)), "block-800-land": (800, (LAND,))}
+RUN_ORDER = ["EXP-02b-strip-full", "EXP-02b-block-400", "EXP-02b-block-800-sea", "EXP-02b-block-800-land"]
+ORDER_NOTE = ("Run order for the four EXP-02b builds: strip-full, block-400, block-800-sea, block-800-land. Run them "
+              "one at a time in this order, because it separates the effects best: "
+              "strip-full (very wide but thin, like EXP-02-1200 that loaded), block-400 (filled 400 px, land and sea), "
+              "block-800-sea (filled 800 px, sea only, a few hundred neighbours), block-800-land (filled 800 px, land "
+              "only, about 1000 neighbours). Report every build, also after one fails.")
+CANNOT_02B = {
+    "size": ("the exact threshold: each EXP-02b build tests one size; a build that loads shows that this size works, "
+             "a build that fails does not by itself locate the limit, because its host also has far more neighbours "
+             "and enclaves than any vanilla province"),
+    "block": ("one filled province of this size is not a full map of them: it does not show what many such provinces "
+              "together (a whole ocean of large sea zones) do to loading, pathing or performance"),
+    "strip": ("a 1-pixel strip is not a filled province (the block builds test that), and one very wide province is "
+              "not a full map of them: it does not show what many such provinces together do to loading, pathing or "
+              "performance"),
+}
+
+
 class Exp02b(Experiment):
     exp_id = "EXP-02b"
     title = "larger province-size variants"
     priority = 2
 
     def build_ids(self, ctx):
-        return ["EXP-02b-strip-full"] + [f"EXP-02b-block-{s}" for s in sorted(BLOCKS)]
+        return list(RUN_ORDER)
 
-    def size(self, build_id):
-        return None if build_id.endswith("strip-full") else int(build_id.split("-")[-1])
+    def spec(self, build_id):
+        """None for the strip build, else (square size, kinds)."""
+        key = build_id.split("EXP-02b-", 1)[1]
+        return None if key == "strip-full" else BLOCK_BUILDS[key]
 
     def title_for(self, build_id):
-        s = self.size(build_id)
-        if s is None:
+        sp = self.spec(build_id)
+        if sp is None:
             return f"one sea province {STRIP_WIDTH[SEA]} px and one land province {STRIP_WIDTH[LAND]} px wide (strips)"
-        return f"one land + one sea province filled {s}x{s} px"
+        size, kinds = sp
+        what = " + one ".join(KIND_NAME[k] for k in kinds)
+        return f"one {what} province filled {size}x{size} px"
 
     def expected(self, build_id):
-        s = self.size(build_id)
-        if s is None:
-            what = (f"WARN BBOX_LARGE now lists the two test provinces (sea {STRIP_WIDTH[SEA]} px, land "
+        sp = self.spec(build_id)
+        if sp is None:
+            what = (f"WARN BBOX_LARGE lists the two test provinces (sea {STRIP_WIDTH[SEA]} px, land "
                     f"{STRIP_WIDTH[LAND]} px) besides vanilla's 7855 (280 px); that is the property under test.")
         else:
-            what = (f"WARN BBOX_LARGE now lists the two test provinces ({s} px) besides vanilla's 7855 (280 px); that "
-                    "is the property under test. WARN STATE_NONCONTIGUOUS lists more states than vanilla's 30: "
-                    "states of donor provinces that now sit as small remnants inside the block (a consequence of "
-                    "keeping every donor alive, see the README).")
+            size, kinds = sp
+            n = "two test provinces" if len(kinds) == 2 else f"{KIND_NAME[kinds[0]]} test province"
+            what = (f"WARN BBOX_LARGE lists the {n} ({size} px) besides vanilla's 7855 (280 px); that is the property "
+                    "under test.")
+            if LAND in kinds:
+                what += (" WARN STATE_NONCONTIGUOUS lists more states than vanilla's 30: states of donor provinces "
+                         "that now sit as small remnants inside the block (listed in the README).")
         return Expected(text=what + " Everything else as the vanilla baseline (0 ERROR, no PROVINCE_TOO_SMALL; WARN "
                                     "DEF_SEA_CONTINENT, STATE_NONCONTIGUOUS, RIVERS_ON_SEA, RIVERS_THICK, "
                                     "STATE_CATEGORY_DUP).")
@@ -526,112 +628,127 @@ class Exp02b(Experiment):
         pid2, sea = strip(v, SEA, STRIP_WIDTH[SEA], pid1)
         return pid2, land, sea
 
-    def make_blocks(self, v, size):
+    def make_blocks(self, v, size, kinds):
         pid = np.asarray(v.pid)
         prot = protected_ids(v)
         infos = {}
         out = pid
-        for kind in (LAND, SEA):
+        for kind in kinds:
             r0, c0, host = BLOCKS[size][kind]
             out, infos[kind] = make_block(out, v.types, kind, host, r0, c0, size, prot)
-        probs = block_problems(v, pid, out, size, prot)
+        probs = block_problems(v, pid, out, size, kinds, prot)
         if probs:
             raise KitError("EXP-02b: block build breaks its own rules: " + "; ".join(probs[:5]))
         return out, infos
 
     def build(self, ctx, build_id, out: Path):
         v = ctx.vanilla
-        colors = v.definition.colors()
-        s = self.size(build_id)
-        if s is None:
-            pid, land, sea = self.make_strips(v)
-            write_bytes(out, PROV, write_bmp(v.provinces_bmp, rgb_from_pid(pid, colors), keep_tail=True))
-            files, moved = relocate_positions(v, np.asarray(v.pid), pid)
-            for rel, text in sorted(files.items()):
-                write_bytes(out, rel, encode(text))
-            return {"land": land, "sea": sea, "moved": moved,
-                    "land_where": v.province_state[land["host"]][1].rsplit(".", 1)[0],
-                    "sea_where": v.province_region[sea["host"]][1].rsplit(".", 1)[0]}
-        pid, infos = self.make_blocks(v, s)
         van = np.asarray(v.pid)
-        write_bytes(out, PROV, write_bmp(v.provinces_bmp, rgb_from_pid(pid, colors), keep_tail=True))
+        sp = self.spec(build_id)
+        if sp is None:
+            pid, land, sea = self.make_strips(v)
+            infos = {LAND: land, SEA: sea}
+        else:
+            pid, infos = self.make_blocks(v, *sp)
+        write_bytes(out, PROV, write_bmp(v.provinces_bmp, rgb_from_pid(pid, v.definition.colors()), keep_tail=True))
         files, moved = relocate_positions(v, van, pid)
         for rel, text in sorted(files.items()):
             write_bytes(out, rel, encode(text))
-        links = adjacency_links(v.text("map/adjacencies.csv"))
-        nc = sorted(noncontiguous_states(pid, v.types, v.province_state, links)
-                    - noncontiguous_states(van, v.types, v.province_state, links))
-        land, sea = infos[LAND], infos[SEA]
-        return {"land": land, "sea": sea, "moved": moved, "new_noncontiguous": nc,
-                "land_where": v.province_state[land["host"]][1].rsplit(".", 1)[0],
-                "sea_where": v.province_region[sea["host"]][1].rsplit(".", 1)[0]}
+        hosts = {k: i["host"] for k, i in infos.items()}
+        info = {KIND_NAME[k]: i for k, i in infos.items()}
+        info["effects"] = side_effects(v, van, pid, hosts, moved)
+        if LAND in infos:
+            info["land_where"] = v.province_state[infos[LAND]["host"]][1].rsplit(".", 1)[0]
+        if SEA in infos:
+            info["sea_where"] = v.province_region[infos[SEA]["host"]][1].rsplit(".", 1)[0]
+        return info
 
     # -------------------------------------------------------------- README
+    def _effects_text(self, info):
+        e = info["effects"]
+        nb = " and ".join(f"the {k} host now touches {n} provinces (before: {e['neighbours_before'][k]})"
+                          for k, n in e["neighbours"].items())
+        moved = ", ".join(f"{k.split('/')[-1]} {n}" for k, n in e["moved"].items()) or "none"
+        return (f"What else comes with it (not under test, but it could matter): {nb}; the most-connected province in "
+                f"the normal game touches {e['vanilla_max_neighbours']}. {e['donor_count']} donor provinces lost "
+                f"pixels, {e['enclaves']} of them are now enclaves inside a host. {e['moved_total']} position lines "
+                f"moved ({moved}). Newly non-contiguous: {len(e['new_noncontiguous_states'])} states "
+                f"({_ids(e['new_noncontiguous_states'])}) and {len(e['new_noncontiguous_regions'])} strategic "
+                f"regions ({_ids(e['new_noncontiguous_regions'])}).")
+
+    def _fail_line(self, info):
+        e = info["effects"]
+        nb = " / ".join(f"{n} ({k})" for k, n in e["neighbours"].items())
+        return (f"If this build fails, it does NOT by itself show a size limit: the host also has {nb} neighbours "
+                f"(normal game at most {e['vanilla_max_neighbours']}) and {e['enclaves']} enclaves; compare with the "
+                "other EXP-02b builds and with EXP-02-1200.")
+
     def readme(self, ctx, build_id, info):
-        s = self.size(build_id)
-        L, S = info["land"], info["sea"]
-        cannot = ["EXP-02"]
-        extra = ["one filled province of this size is not a full map of them: it does not show what many such "
-                 "provinces together (a whole ocean of large sea zones) do to loading, pathing or performance"]
+        sp = self.spec(build_id)
+        hosts = [info[k]["host"] for k in ("land", "sea") if k in info]
         send = ["Did the game reach the main menu? Did a game start? (yes/no each)",
                 "Loading time (roughly, in seconds).",
-                f"Every error.log line that contains 'BOX', 'box', '{L['host']}' or '{S['host']}' (copy them exactly)."]
-        moved = ", ".join(f"{k.split('/')[-1]} {v} lines" for k, v in sorted(info["moved"].items())) or "none"
-        if s is None:
+                "Every error.log line that contains 'BOX', 'box' or " + " or ".join(f"'{h}'" for h in hosts)
+                + " (copy them exactly)."]
+        notes = [self._fail_line(info), ORDER_NOTE]
+        if sp is None:
+            L, S = info["land"], info["sea"]
             prop = (f"map/provinces.bmp: sea province {S['host']} gets a 1-pixel-high strip {STRIP_WIDTH[SEA]} "
                     f"pixels wide (the map is 5632 px wide; the strip stops just short of the left/right wrap edge), "
                     f"and land province {L['host']} a strip {STRIP_WIDTH[LAND]} pixels wide. Land is narrower because "
                     f"a land strip may only run through land: {STRIP_WIDTH[LAND]} px is the widest valid land span on "
                     "the map (northern Eurasia). The strips borrow pixels from neighbouring provinces; no province "
                     "is removed, no state, coast or terrain changes. Unit, building and weather positions that stood "
-                    f"on a strip pixel moved into their own province ({moved}); nothing else in those files changes.")
+                    "on a strip pixel moved into their own province; nothing else in those files changes.\n"
+                    + self._effects_text(info))
             why = ("EXP-02-300/600/1200 all loaded. This pushes the same thin-strip test to the largest box the map "
                    "allows, to see whether any width limit exists at all.")
             steps = ["If the main menu appears: start a new game with any country and let it run for 2-3 days.",
                      f"Optional: look at sea province {S['host']} (strategic region '{info['sea_where']}', row "
                      f"{S['row']} from the top, far south) and land province {L['host']} (state file "
                      f"'{info['land_where']}'); a thin 1-pixel line running east from each is expected."]
-            notes = ["Control: EXP-02-1200 (1,200 px strips) loaded without a BOX line."]
-            extra = ["a 1-pixel strip is not a filled province (EXP-02b-block-400/800 test that), and one very wide "
-                     "province is not a full map of them: it does not show what many such provinces together do to "
-                     "loading, pathing or performance"]
-            return texts.readme(build_id, self.title_for(build_id), prop=prop, why=why, launch=texts.LAUNCH_NORMAL,
-                                steps=steps, send=send, expected=self.expected(build_id).text, cannot=cannot,
-                                cannot_extra=extra, user_dir=ctx.user, notes=notes)
-        nc = info["new_noncontiguous"]
-        prop = (f"map/provinces.bmp: land province {L['host']} and sea province {S['host']} each become a solid, "
-                f"filled square of {s} x {s} pixels (vanilla's largest boxes are land 280 px and sea 179 px). They "
-                f"take over the pixels of neighbouring provinces inside the square: {len(L['donors'])} land and "
-                f"{len(S['donors'])} sea donor provinces. No province is removed: a donor that lay (almost) wholly inside "
-                f"the square keeps a small remnant of at least {REMNANT} pixels, so it stays on the map with its state, region "
-                f"and victory points. Land block filled {L['fill']:.1%}, sea block {S['fill']:.1%} (the rest are "
-                "those remnants, lakes and provinces that must not move: railways, supply nodes, straits). "
-                f"Building, unit and weather positions that stood on taken pixels moved into their own province's "
-                f"remnant ({moved}); nothing else in those files changes.")
-        why = ("EXP-02 only tested thin 1-pixel strips. This tests whether a large province that is actually filled "
-               "loads, which is what open-ocean and off-map filler provinces would look like. It decides BBOX_MAX "
-               "(today land 250 / sea 180 px).")
-        steps = ["If the main menu appears: start a new game with any country and let it run for 2-3 days.",
-                 f"Optional: look at land province {L['host']} (state file '{info['land_where']}') and sea province "
-                 f"{S['host']} (strategic region '{info['sea_where']}'): each should be one big square with small "
-                 "enclaves (the donor remnants, a few pixels each) in it."]
-        notes = [f"Side effect, on purpose: {len(nc)} states now have a small remnant province cut off from the rest "
-                 f"of the state (states {', '.join(str(x) for x in nc[:40])}{' ...' if len(nc) > 40 else ''}). The "
-                 "normal game already has 30 such states; if something about these states looks odd in-game, "
-                 "report it, but it is not the thing under test.",
-                 "Side effect, on purpose: the donor remnants are enclaves inside the host, so their neighbours "
-                 "changed (a remnant sea zone can only be reached through the big sea zone). Pathing near the "
-                 "blocks is not under test.",
-                 "Test block-400 before block-800. If block-400 fails and EXP-02-1200 loaded, say so: the filled "
-                 "area (not the width) would then matter."]
+            notes.append("Control: EXP-02-1200 (1,200 px strips, hosts with 12 and 27 neighbours) loaded without a "
+                         "BOX line.")
+            cannot = [CANNOT_02B["size"], CANNOT_02B["strip"]]
+        else:
+            size, kinds = sp
+            parts = [info[KIND_NAME[k]] for k in kinds]
+            who = " and ".join(f"{p['kind']} province {p['host']}" for p in parts)
+            donors = " and ".join(f"{len(p['donors'])} {p['kind']}" for p in parts)
+            fill = "; ".join(f"the {p['kind']} block is {p['fill']:.1%} host" for p in parts)
+            verb = "each become" if len(parts) > 1 else "becomes"
+            prop = (f"map/provinces.bmp: {who} {verb} a solid, filled square of {size} x {size} pixels (vanilla's "
+                    "largest boxes are land 280 px and sea 179 px). The host takes over the pixels of the provinces "
+                    f"inside the square: {donors} donor provinces. No province is removed: a donor that lay (almost) "
+                    f"wholly inside the square keeps a small remnant of at least {REMNANT} pixels, so it stays on the "
+                    f"map with its state, region and victory points. Filled: {fill} (the rest are those remnants, "
+                    "lakes and provinces that must not move: railways, supply nodes, straits). Building, unit and "
+                    "weather positions that stood on taken pixels moved into their own province's remnant; nothing "
+                    "else in those files changes.\n" + self._effects_text(info))
+            why = ("EXP-02 only tested thin 1-pixel strips. This tests whether a large province that is actually "
+                   "filled loads, which is what open-ocean and off-map filler provinces would look like. It decides "
+                   "BBOX_MAX (today land 250 / sea 180 px).")
+            where = []
+            if "land" in info:
+                where.append(f"land province {info['land']['host']} (state file '{info['land_where']}')")
+            if "sea" in info:
+                where.append(f"sea province {info['sea']['host']} (strategic region '{info['sea_where']}')")
+            steps = ["If the main menu appears: start a new game with any country and let it run for 2-3 days.",
+                     f"Optional: look at {' and '.join(where)}: one big square with small enclaves (the donor "
+                     "remnants, a few pixels each) in it is expected."]
+            notes.append("Side effect, on purpose: the donor remnants are enclaves inside the host, so their "
+                         "neighbours changed (a remnant can only be reached through the host), and the states and "
+                         "strategic regions listed above now have a piece cut off. The normal game already has 30 "
+                         "non-contiguous states. Pathing near the blocks is not under test.")
+            cannot = [CANNOT_02B["size"], CANNOT_02B["block"]]
         return texts.readme(build_id, self.title_for(build_id), prop=prop, why=why, launch=texts.LAUNCH_NORMAL,
-                            steps=steps, send=send, expected=self.expected(build_id).text, cannot=cannot,
-                            cannot_extra=extra, user_dir=ctx.user, notes=notes)
+                            steps=steps, send=send, expected=self.expected(build_id).text, cannot=[],
+                            cannot_extra=cannot, user_dir=ctx.user, notes=notes)
 
     # -------------------------------------------------------------- check
     def check(self, ctx, build_id, out):
         v = ctx.vanilla
-        s = self.size(build_id)
+        sp = self.spec(build_id)
         van = np.asarray(v.pid)
         present = {rel for rel in POS_FILES if (out / rel).is_file()}
         probs = check_file_set(out, {PROV} | present)
@@ -643,13 +760,15 @@ class Exp02b(Experiment):
             got = pid_from_rgb(read_bmp(p.read_bytes()).pixels, v.definition.colors())
         except KitError as e:
             return probs + [f"provinces.bmp: {e}"]
-        if s is None:        # positions on strip pixels are relocated, so the position mask is empty here
+        if sp is None:       # positions on strip pixels are relocated, so the position mask is empty here
             probs += strip_problems(v, van, got, STRIP_WIDTH, np.zeros(van.shape, dtype=bool))
         else:
-            probs += block_problems(v, van, got, s, protected_ids(v))
+            probs += block_problems(v, van, got, sp[0], sp[1], protected_ids(v))
         for rel in sorted(POS_FILES):
             text = decode((out / rel).read_bytes()) if rel in present else None
             if text is not None and text == v.text(rel):
                 probs.append(f"{rel} is present but identical to vanilla")
             probs += position_problems(v, van, got, rel, text)[:5]
         return probs
+
+

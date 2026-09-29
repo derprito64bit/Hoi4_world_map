@@ -132,6 +132,15 @@ def test_noncontiguous_states_and_rail_gaps():
     assert rail_gaps("1 2 1 3\n", {(1, 2)}) == [(1, 1, 3)]
 
 
+def test_noncontiguous_regions_and_neighbour_counts():
+    from experiments.exp02b import neighbour_counts, noncontiguous_regions
+    pid = np.array([[1, 1, 2, 3, 3, 2]], dtype=np.int32)
+    pr = {1: (5, "r"), 3: (5, "r"), 2: (6, "s")}
+    assert noncontiguous_regions(pid, pr, set()) == {5}
+    assert noncontiguous_regions(pid, pr, {(1, 3)}) == set()
+    assert neighbour_counts(pid, 4).tolist() == [0, 1, 2, 1]
+
+
 class FakeV:
     """Just enough of vanilla.Vanilla for the position helpers."""
 
@@ -187,6 +196,9 @@ def test_position_problems_negative():
     s[2] = "12.50"                                                              # back onto the host's pixels
     moved_wrong[0] = ";".join(s)
     assert position_problems(v, van, got, rel, "\n".join(moved_wrong) + "\n")
+    low = new[rel].replace(";12.00;", ";0.00;", 1)                              # moved line with a wrong height
+    assert low != new[rel]
+    assert any("height y=0.00" in p for p in position_problems(v, van, got, rel, low))
     extra = new[rel].replace("3;0;25.50", "3;0;26.50")                          # untouched line changed
     assert any("not re-assigned" in p for p in position_problems(v, van, got, rel, extra))
     assert position_problems(v, van, got, rel, new[rel] + "3;1;25.50;9.50;5.50;0.00;0.20\n")
@@ -228,10 +240,23 @@ def test_fresh_build_passes_check(ctx, built, bid):
     assert exp.check(ctx, bid, out) == []
 
 
-def test_selector_picks_the_three_new_builds(ctx):
+def test_selector_picks_the_four_new_builds_in_run_order(ctx):
     from experiments.registry import resolve
-    assert [b for _, b in resolve(ctx, "EXP-02b")] == ["EXP-02b-strip-full", "EXP-02b-block-400", "EXP-02b-block-800"]
+    assert [b for _, b in resolve(ctx, "EXP-02b")] == ["EXP-02b-strip-full", "EXP-02b-block-400",
+                                                       "EXP-02b-block-800-sea", "EXP-02b-block-800-land"]
     assert "EXP-02b-strip-full" not in [b for _, b in resolve(ctx, "EXP-02")]
+
+
+@pytest.mark.parametrize("bid", ["EXP-02b-strip-full", "EXP-02b-block-400"])
+def test_readme_states_side_effects(ctx, built, bid):
+    exp, out = built[bid]
+    r = (out / "README.txt").read_text(encoding="utf-8")
+    for part in ("If this build fails, it does NOT by itself show a size limit", "neighbours",
+                 "the most-connected province in the normal game touches 23", "donor provinces lost pixels",
+                 "position lines moved", "strategic regions", "strip-full, block-400, block-800-sea, block-800-land",
+                 "each EXP-02b build tests one size"):
+        assert part in r, part
+    assert "only the three sizes tested" not in r                       # no reused EXP-02 limitation
 
 
 def test_constants_still_valid_on_this_game(ctx):
@@ -269,16 +294,55 @@ def test_check_catches_a_non_donor_pixel(ctx, built):
     _block_neg(ctx, built, fn, "outside the allowed donors")
 
 
-def test_check_catches_a_vanished_donor(ctx, built):
+@pytest.fixture(scope="module")
+def inside_remnant(ctx, built):
+    """(host, donor) of the 400-px sea block: a donor that now exists only as its remnant inside the square."""
     from experiments.exp02b import BLOCKS
+    exp, out = built["EXP-02b-block-400"]
     r0, c0, host = BLOCKS[400][SEA]
+    info = exp.make_blocks(ctx.vanilla, 400, (LAND, SEA))[1][SEA]
+    van = np.asarray(ctx.vanilla.pid)
+    whole = [int(d) for d in sorted(info["remnant_inside"], key=int)
+             if (van[r0:r0 + 400, c0:c0 + 400] == int(d)).sum() == (van == int(d)).sum()]
+    return host, whole[0]
 
-    def fn(pid):                           # one remnant disappears into the host
-        sub = pid[r0:r0 + 400, c0:c0 + 400]
-        ids, cnt = np.unique(sub, return_counts=True)
-        d = int(ids[np.argmin(np.where(ids == host, 1 << 30, cnt))])
+
+def test_check_catches_a_vanished_donor(ctx, built, inside_remnant):
+    host, d = inside_remnant
+
+    def fn(pid):                           # only that donor's remnant goes to the host: the province vanishes
+        assert (pid == d).sum() >= 9
         pid[pid == d] = host
     _block_neg(ctx, built, fn, "below 8 px")
+
+
+def test_check_catches_a_remnant_below_the_promised_size(ctx, built, inside_remnant):
+    from experiments.exp02b import REMNANT
+    host, d = inside_remnant
+
+    def fn(pid):                           # the remnant loses one pixel: 8 px is legal, but the README promises 9
+        ys, xs = np.nonzero(pid == d)
+        assert len(ys) == REMNANT
+        pid[ys[0], xs[0]] = host
+    _block_neg(ctx, built, fn, f"below the {REMNANT}-px remnant")
+
+
+def test_check_catches_a_moved_line_with_a_wrong_height(ctx, built):
+    bid = "EXP-02b-block-400"
+    exp, out = built[bid]
+    p = out / "map" / "unitstacks.txt"
+    orig = p.read_bytes()
+    van = ctx.vanilla.bytes("map/unitstacks.txt")
+    a, b = orig.split(b"\n"), van.split(b"\n")
+    i = next(k for k in range(len(a)) if a[k] != b[k])
+    s = a[i].split(b";")
+    s[3] = b"0.00"
+    a[i] = b";".join(s)
+    try:
+        p.write_bytes(b"\n".join(a))
+        assert any("height y=0.00" in x for x in exp.check(ctx, bid, out))
+    finally:
+        p.write_bytes(orig)
 
 
 def test_check_catches_an_unfilled_block(ctx, built):
@@ -353,7 +417,8 @@ def test_check_catches_a_second_strip_row(ctx, built):
         pid[meta["row"] + 1, meta["c0"] + 50] = meta["host"]
     p, orig = _edit_pid(ctx, out, fn)
     try:
-        assert exp.check(ctx, bid, out)
+        probs = exp.check(ctx, bid, out)
+        assert any("strip is not a single row" in x for x in probs), probs
     finally:
         p.write_bytes(orig)
 
