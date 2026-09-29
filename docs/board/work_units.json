@@ -98,10 +98,10 @@
       "depends_on": [
         "P00b-f2"
       ],
-      "status": "changes_requested",
+      "status": "done",
       "branch": "wu/P00b-f3",
-      "attempts": 2,
-      "notes": "crash dump crashes/hoi4_20260929_074145; must identify which generated property triggers it so P05 avoids it; r1 4c0388f: root cause region-centre div0 (region 191 in 24k); variants 24k-fix, div0; review r1 0/2/5 -> r2"
+      "attempts": 3,
+      "notes": "crash dump crashes/hoi4_20260929_074145; must identify which generated property triggers it so P05 avoids it; r1 4c0388f: root cause region-centre div0 (region 191 in 24k); variants 24k-fix, div0; review r1 0/2/5 -> r2; r3 2960f73: tests 248+1skip; review 0/0/3 -> merged"
     },
     {
       "id": "P00b-f4",
@@ -115,9 +115,9 @@
       "depends_on": [
         "P00b-f3"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "branch": "wu/P00b-f4",
-      "attempts": 0,
+      "attempts": 1,
       "notes": "from P00b-f3 side finding"
     }
   ]
