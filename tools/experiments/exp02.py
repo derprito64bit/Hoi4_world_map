@@ -27,7 +27,7 @@ from . import texts
 from .base import Expected, Experiment, check_descriptor, check_file_set
 from .bmpio import read_bmp, write_bmp
 from .common import KitError, write_bytes
-from .mapdata import LAND, SEA, adjacency_pairs, areas, bboxes, pid_from_rgb, rgb_from_pid, x_crossings, x_crossings_window
+from .mapdata import LAND, SEA, adjacency_pairs, areas, bboxes, coastal_flags, pid_from_rgb, rgb_from_pid, x_crossings, x_crossings_window
 from .positions import forbidden_mask
 
 WIDTHS = (300, 600, 1200)
@@ -231,39 +231,45 @@ class Exp02(Experiment):
             got = pid_from_rgb(read_bmp(p.read_bytes()).pixels, v.definition.colors())
         except KitError as e:
             return probs + [f"provinces.bmp: {e}"]
-        types = v.types
-        diff = got != van
-        hosts = sorted(set(got[diff].tolist()))
-        if len(hosts) != 2 or sorted(types[hosts].tolist()) != [LAND, SEA]:
-            probs.append(f"changed pixels must belong to exactly one land and one sea host, got {hosts}")
-            return probs
-        n = len(types)
-        bb = bboxes(got, n)
-        for h in hosts:
-            rows = np.unique(np.nonzero(diff & (got == h))[0])
-            if len(rows) != 1:
-                probs.append(f"host {h}: strip is not a single row")
-            wdt = bb[1][h] - bb[0][h] + 1
-            if wdt != width:
-                probs.append(f"host {h}: bounding-box width {wdt}, expected {width}")
-        if (types[van[diff]] != types[got[diff]]).any():
-            probs.append("a strip changed the type (land/sea/lake) of some pixels")
-        a = areas(got, n)
-        if (a[1:] < MIN_PX).any():
-            probs.append(f"provinces below {MIN_PX} px: {np.nonzero(a[1:] < MIN_PX)[0][:10] + 1}")
-        if len(x_crossings(got)[0]):
-            probs.append("X-crossings present")
-        before = {tuple(x) for x in adjacency_pairs(van).tolist()}
-        after = {tuple(x) for x in adjacency_pairs(got).tolist()}
-        if before - after:
-            probs.append(f"{len(before - after)} province contacts were lost, e.g. {sorted(before - after)[:5]}")
-        stray = [pair for pair in after - before if not set(pair) & set(hosts)]
-        if stray:
-            probs.append(f"new contacts that do not involve a host: {stray[:5]}")
-        from .mapdata import coastal_flags
-        cf, cg = coastal_flags(van, types), coastal_flags(got, types)
-        if (cf != cg).any():
-            probs.append("coastal flags would change (definition.csv would be stale)")
-        if self.forbidden(v)[diff].any():
-            probs.append("a building/unit/weather position lies on a re-assigned pixel")
+        return probs + strip_problems(v, van, got, {LAND: width, SEA: width}, self.forbidden(v))
+
+
+def strip_problems(v, van: np.ndarray, got: np.ndarray, widths: dict, forbidden: np.ndarray) -> list:
+    """EXP-02 rules on a finished map: one land + one sea host, each a single-row strip of widths[kind] px."""
+    probs = []
+    types = v.types
+    diff = got != van
+    hosts = sorted(set(got[diff].tolist()))
+    if len(hosts) != 2 or sorted(types[hosts].tolist()) != [LAND, SEA]:
+        probs.append(f"changed pixels must belong to exactly one land and one sea host, got {hosts}")
         return probs
+    n = len(types)
+    bb = bboxes(got, n)
+    for h in hosts:
+        rows = np.unique(np.nonzero(diff & (got == h))[0])
+        if len(rows) != 1:
+            probs.append(f"host {h}: strip is not a single row")
+        wdt = bb[1][h] - bb[0][h] + 1
+        want = widths[int(types[h])]
+        if wdt != want:
+            probs.append(f"host {h}: bounding-box width {wdt}, expected {want}")
+    if (types[van[diff]] != types[got[diff]]).any():
+        probs.append("a strip changed the type (land/sea/lake) of some pixels")
+    a = areas(got, n)
+    if (a[1:] < MIN_PX).any():
+        probs.append(f"provinces below {MIN_PX} px: {np.nonzero(a[1:] < MIN_PX)[0][:10] + 1}")
+    if len(x_crossings(got)[0]):
+        probs.append("X-crossings present")
+    before = {tuple(x) for x in adjacency_pairs(van).tolist()}
+    after = {tuple(x) for x in adjacency_pairs(got).tolist()}
+    if before - after:
+        probs.append(f"{len(before - after)} province contacts were lost, e.g. {sorted(before - after)[:5]}")
+    stray = [pair for pair in after - before if not set(pair) & set(hosts)]
+    if stray:
+        probs.append(f"new contacts that do not involve a host: {stray[:5]}")
+    cf, cg = coastal_flags(van, types), coastal_flags(got, types)
+    if (cf != cg).any():
+        probs.append("coastal flags would change (definition.csv would be stale)")
+    if forbidden[diff].any():
+        probs.append("a building/unit/weather position lies on a re-assigned pixel")
+    return probs
