@@ -20,6 +20,14 @@ padded consistently, never stretched:
   (weather copied from the adjacent vanilla sea region), their localisation,
   weatherpositions and unitstacks for the new seas, and the coastal building
   positions / unit-stack types for land that became coastal.
+Region-centre guard (P00b-f4, ``regioncentre.py``): no vanilla province gains or loses
+a pixel (the padding is new provinces only; with top padding alone, a 3x4-px new sea
+straddling the wrap seam above the old top edge avoids the seam X-crossing and has a
+region of its own), every vanilla region's centre calculation stays identical, and
+every new region's mean lies >= 1 px inside a member box (``regiongroup.grow_regions``).
+Known limit: at 6144 px the vanilla wrap regions no longer reach the right edge W-1;
+region 178 (fallback, dy 0 in vanilla, where it wraps) then fails the guard, and no
+padding layout can change that (its members and boxes are vanilla's).
 Expected validator finding: ERROR AREA_TOO_LARGE (the property under test).
 """
 from __future__ import annotations
@@ -37,9 +45,12 @@ from .bmpio import read_bmp, write_bmp
 from .common import KitError, decode, encode, fmt2, write_bytes
 from .dds import (Dds, bgra_to_rgba, dxt5_decode, dxt5_mip_chain, dxt5_pad_blocks, dxt5_uniform_block,
                   full_mip_count, read_dds, rgba_to_bgra, write_dds)
-from .mapdata import (LAND, SEA, Definition, coast_points, coastal_flags, find_block, fix_x_crossings, game_to_pixel, game_xz,
+from .mapdata import (LAND, SEA, Definition, block_ids, coast_points, coastal_flags, find_block, fix_x_crossings,
+                      game_to_pixel, game_xz,
                       interior_points, new_colors, pid_from_rgb, rgb_from_pid, x_crossings)
 from .positions import PER_COAST, join_lines, split_lines
+from .regioncentre import guard_problems, region_centres
+from .regiongroup import grow_regions
 from .tiling import tile
 
 VARIANTS = {"5632x2560": (5632, 2560), "6144x2560": (6144, 2560)}
@@ -54,6 +65,8 @@ DDS_FILES = ["map/terrain/colormap_rgb_cityemissivemask_a.dds", "map/terrain/col
 LOC = "localisation/english/p00b_exp08_l_english.yml"
 DEFAULT_WEATHER_REGION = 46          # Barents Sea, if a tile touches no vanilla sea
 COAST_STACK_TYPES = (19, 20)
+SEAM_PATCH = (3, 2)                  # rows x columns per side of the seam patch province (box >= 3 px each way)
+REGION_MAX = 24                      # padding provinces per new region
 
 
 def pad_array(a: np.ndarray, top: int, right: int, fill) -> np.ndarray:
@@ -80,18 +93,117 @@ def median_colour(rgba: np.ndarray, mask_full: np.ndarray) -> tuple:
 
 
 def pad_provinces(pid: np.ndarray, types: np.ndarray, top: int, right: int, n0: int):
-    """Padded pid with new sea IDs n0.. in the new area; returns (pid, number of new IDs)."""
+    """Padded pid with new sea IDs n0.. in the new area; returns (pid, number of new IDs).
+
+    Padding pixels belong only to new provinces: no vanilla province gains or loses a pixel
+    (a vanilla box change moves its region's centre, e.g. region 88 via province 2287 in P00b-f3).
+    Only top padding keeps the canvas width: then the old top row meets the padding at the wrap
+    seam, where two different vanilla provinces below and two padding pixels above form an
+    X-crossing unless the two padding pixels are one province. That province is SEAM_PATCH
+    (rows x columns on each side of the seam), a small new sea straddling the seam; it is the
+    last new ID and gets a strategic region of its own (``seam_straddlers``).
+    """
     H, W = pid.shape
-    newmask = np.ones((H + top, W + right), dtype=bool)
+    H1, W1 = H + top, W + right
+    newmask = np.ones((H1, W1), dtype=bool)
     newmask[top:, :W] = False
     lab, k = tile(newmask, CELL_W, CELL_H)
     out = np.where(lab >= 0, lab.astype(np.int64) + n0, 0)
     out[top:, :W] = pid
     out = out.astype(np.int32)
-    # a padding pixel may take the ID of another padding province, or - only where nothing else works, i.e.
-    # at the wrap seam right above the old top edge - of the vanilla SEA province directly below it
-    fix_x_crossings(out, lambda a, b: a >= n0 and a != b and (b >= n0 or types[b] == SEA))
+    patch = None
+    if top and not right and pid[0, 0] != pid[0, W - 1]:
+        patch = n0 + k
+        rows, cols = SEAM_PATCH
+        out[top - rows:top, :cols] = patch
+        out[top - rows:top, W1 - cols:] = patch
+        k += 1
+        if np.bincount(out[:top].ravel(), minlength=patch + 1)[n0:patch].min() == 0:
+            raise KitError("the seam patch swallowed a padding tile")
+    # a padding pixel may only take the ID of another padding province; the seam patch never gives pixels away
+    fix_x_crossings(out, lambda a, b: a >= n0 and b >= n0 and a != b and a != patch)
     return out, k
+
+
+def seam_straddlers(pid: np.ndarray, ids) -> list:
+    """IDs among ``ids`` with pixels in column 0 and in column W-1 (sorted)."""
+    W = pid.shape[1]
+    left, right_ = set(np.unique(pid[:, 0]).tolist()), set(np.unique(pid[:, W - 1]).tolist())
+    return sorted(int(i) for i in ids if i in left and i in right_)
+
+
+def wrapped_width(pid: np.ndarray, i: int) -> int:
+    """Width of province ``i``'s box, measured across the wrap seam when that is shorter (like validate_map.py)."""
+    W = pid.shape[1]
+    cols = np.unique(np.nonzero(pid == i)[1])
+    if len(cols) == 0:
+        return 0
+    gaps = np.diff(np.concatenate([cols, [cols[0] + W]]))
+    return int(W - (gaps.max() - 1))
+
+
+def vanilla_pixel_problems(pid: np.ndarray, vpid: np.ndarray, top: int, n0: int) -> list:
+    """Rule "no vanilla province changes its pixel set": the vanilla part is unchanged and every padding
+    pixel carries a new ID (vanilla at rows top.., columns 0..W-1 of the padded map)."""
+    H, W = vpid.shape
+    probs = []
+    if not np.array_equal(pid[top:top + H, :W], vpid):
+        probs.append("the vanilla part of provinces.bmp changed (a vanilla province lost or changed pixels)")
+    pad = np.ones(pid.shape, dtype=bool)
+    pad[top:top + H, :W] = False
+    got = pid[pad & (pid < n0)]
+    if got.size:
+        probs.append(f"no vanilla province may gain pixels: {got.size} padding pixels carry vanilla IDs "
+                     f"{sorted(set(got.tolist()))[:5]}")
+    return probs
+
+
+def layered_regions(v, new_texts: dict) -> tuple:
+    """({region id: sorted province ids}, [new region ids]) for vanilla's regions plus new region files."""
+    regions = defaultdict(list)
+    for p, (rid, _) in v.province_region.items():
+        regions[rid].append(p)
+    new_ids = []
+    for name, t in sorted(new_texts.items()):
+        m = re.search(r"\bid\s*=\s*(\d+)", re.sub(r"#[^\n]*", "", t))
+        if m is None:
+            raise KitError(f"strategic region {name}: no id")
+        rid = int(m.group(1))
+        if rid in regions:
+            raise KitError(f"strategic region {name}: id {rid} is already used")
+        regions[rid] = block_ids(t, "provinces")
+        new_ids.append(rid)
+    return {r: sorted(regions[r]) for r in sorted(regions)}, sorted(new_ids)
+
+
+def vanilla_centres(v) -> dict:
+    """Region centres of the vanilla map (a map observed loading), cached on the Vanilla object."""
+    if getattr(v, "_region_centres", None) is None:
+        regions, _ = layered_regions(v, {})
+        v._region_centres = region_centres(np.asarray(v.pid), regions)
+    return v._region_centres
+
+
+def _centre_path(c) -> tuple:
+    return (c.n, c.mean, c.rect, c.fallback, c.fallback_strict, c.fallback_all, c.dx, c.dy, c.margin, c.signature)
+
+
+def centre_problems(v, pid: np.ndarray, new_texts: dict) -> list:
+    """Region-centre guard for a padded map: 0 guard failures (vanilla twins count for wrapping regions),
+    every vanilla region's centre calculation identical to vanilla's, every new region's mean >= 1 px
+    inside a member box."""
+    try:
+        regions, new_ids = layered_regions(v, new_texts)
+        cs = region_centres(pid, regions)
+    except KitError as e:
+        return [f"region-centre guard: {e}"]
+    van = vanilla_centres(v)
+    probs = guard_problems(cs, van, clear_ids=new_ids)
+    moved = [r for r in sorted(van) if r not in cs or _centre_path(cs[r]) != _centre_path(van[r])]
+    if moved:
+        probs.append(f"region-centre guard: {len(moved)} vanilla regions changed their centre calculation "
+                     f"(members or boxes): {moved[:10]}")
+    return probs
 
 
 def pad_dds(tmpl: Dds, top: int, right: int, fill_rgba) -> bytes:
@@ -252,16 +364,16 @@ class Exp08(Experiment):
                 badd.append(f"{sid};{t};{fmt2(x)};9.50;{fmt2(z)};0.00;{extra}")
         files["map/buildings.txt"] = encode(join_lines(bl + badd, btr))
         return {"files": files, "new": k, "newly_coastal": newly, "regions": len(groups), "top": top,
-                "right": right}
+                "right": right, "seam_patch": seam_straddlers(pid, range(n0, n))}
 
     def region_groups(self, pid, n0, n, types, v):
-        """Pad provinces grouped into regions of <= 24 by position; weather source = adjacent vanilla sea region."""
+        """Pad provinces grouped into compact regions of <= REGION_MAX whose mean lies >= 1 px inside a member
+        box and which never reach both image edges (``regiongroup.grow_regions``); a seam-straddling patch is a
+        region of its own. Weather source = the adjacent vanilla sea region (most shared border)."""
         H1, W1 = pid.shape
-        ys, xs = np.nonzero(pid >= n0)
-        ids = pid[ys, xs]
-        cy = np.bincount(ids - n0, weights=ys) / np.bincount(ids - n0)
-        cx = np.bincount(ids - n0, weights=xs) / np.bincount(ids - n0)
-        order = sorted(range(n - n0), key=lambda j: (int(cx[j] // 704), int(cy[j] // 512), cx[j], cy[j]))
+        straddle = seam_straddlers(pid, range(n0, n))
+        groups = grow_regions(pid, [i for i in range(n0, n) if i not in straddle], max_members=REGION_MAX)
+        groups = sorted(groups + [[i] for i in straddle])
         # vanilla neighbours of each pad province
         pw = np.concatenate([pid, pid[:, :1]], axis=1)
         a = np.concatenate([pw[:, :-1].ravel(), pid[:-1].ravel()])
@@ -273,14 +385,6 @@ class Exp08(Experiment):
             if types[van] == SEA:
                 nbr[pad][v.province_region[van][1]] += 1
         default = next(f for f in sorted(v.region_files) if f.startswith(f"{DEFAULT_WEATHER_REGION}-"))
-        groups, cur = [], []
-        for j in order:
-            cur.append(n0 + j)
-            if len(cur) == 24:
-                groups.append(cur)
-                cur = []
-        if cur:
-            groups.append(cur)
         out = []
         for g in groups:
             c = Counter()
@@ -325,7 +429,14 @@ class Exp08(Experiment):
                    "No shader or constants.fxh change is included: P00 found no map-size constant there "
                    "(the engine supplies MAP_SIZE_X/Y).",
                    f"{len(info['newly_coastal'])} Arctic land provinces on the old top edge now touch the new ocean "
-                   "and became coastal; they got port/coastal positions like every other coast."])
+                   "and became coastal; they got port/coastal positions like every other coast."]
+            + ([f"Sea province {', '.join(map(str, info['seam_patch']))} is a tiny new sea (3 rows x 4 columns) "
+                "that crosses the left/right map edge just above the old top edge: two different vanilla seas meet "
+                "there at the edge, and without it four provinces would meet at one corner (not allowed), or a "
+                "vanilla sea would have to grow into the new ocean (that would move its strategic region's centre, "
+                "the EXP-03-24k crash mechanism). It has a strategic region of its own. A 'TOO LARGE BOX' or "
+                "similar line for this province in error.log would come from it crossing the edge, not from the "
+                "canvas size: report it."] if info.get("seam_patch") else []))
 
     # ------------------------------------------------------------ check
     def check_added(self, v, pid, types, newly, n0, n, added, region_files, H1) -> list:
@@ -393,13 +504,9 @@ class Exp08(Experiment):
             return probs + [f"cannot read output: {e}"]
         if pid.shape != (H1, W1):
             return probs + [f"provinces.bmp is {pid.shape[1]}x{pid.shape[0]}"]
-        if not np.array_equal(pid[top:, :W], np.asarray(v.pid)):
-            probs.append("the vanilla part of provinces.bmp changed")
         pad = np.ones(pid.shape, dtype=bool)
         pad[top:, :W] = False
-        borrowed = np.nonzero(pad & (pid < n0))
-        if len(borrowed[0]) > 4 or (v.types[pid[borrowed]] != SEA).any():
-            probs.append("padding contains vanilla provinces beyond the seam-corner pixels")
+        probs += vanilla_pixel_problems(pid, np.asarray(v.pid), top, n0)
         vd = v.definition
         types = d.types()
         coast = coastal_flags(pid, types)
@@ -419,7 +526,10 @@ class Exp08(Experiment):
             probs.append("X-crossings present")
         from .mapdata import bboxes
         bb = bboxes(pid, d.n)
-        sides = np.maximum(bb[1] - bb[0] + 1, bb[3] - bb[2] + 1)[n0:]
+        wide = np.asarray(bb[1] - bb[0] + 1)
+        for i in seam_straddlers(pid, range(n0, d.n)):
+            wide[i] = wrapped_width(pid, i)            # the seam patch: measured across the seam
+        sides = np.maximum(wide, bb[3] - bb[2] + 1)[n0:]
         if (sides > 180).any():
             probs.append("a padding province exceeds 180 px")
         for rel, val in FILL.items():
@@ -473,6 +583,8 @@ class Exp08(Experiment):
             seen.update(block_ids(decode(p.read_bytes()), "provinces"))
         if set(seen) != set(range(n0, d.n)) or any(c != 1 for c in seen.values()):
             probs.append("padding provinces are not each in exactly one new region")
+        # region-centre guard (P00b-f4): vanilla regions keep their centre path, new regions never fall back
+        probs += centre_problems(v, pid, {p.name: decode(p.read_bytes()) for p in region_files})
         # appended-only text files, and exactly the expected appended lines
         added = {}
         for rel in ("map/weatherpositions.txt", "map/unitstacks.txt", "map/buildings.txt"):

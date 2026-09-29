@@ -189,7 +189,7 @@ def test_exp08_pad_array_and_provinces(tiny_map):
     assert np.array_equal(out[32:, :96], pid)
     pad = np.ones(out.shape, bool)
     pad[32:, :96] = False
-    assert (out[pad] >= d.n).all() or ((out[pad] < d.n).sum() <= 4)
+    assert (out[pad] >= d.n).all()                     # padding pixels never carry a vanilla ID (P00b-f4)
     assert len(x_crossings(out)[0]) == 0 and k >= 1
 
 
@@ -208,39 +208,77 @@ def test_exp08_pad_dds_keeps_vanilla_blocks():
 
 # ---------------------------------------------------------------- EXP-09 synthetic layout
 def small_layout():
+    """Four region runs (odd and even lengths, one with sea bars 13-15) and a landmark run (state 10-11 plus
+    the rest of its region, 12) on a small Equal Earth canvas."""
     from experiments.common import ee_project
     from experiments.synth import Params, layout
     cv = ee_project().Canvas(512, 256, 10.9, -60.0, 90.0)
     globe = cv.globe_mask()
-    units = [(1, [1, 2, 3]), (2, [4, 5]), (3, [6, 7, 8, 9])]
+    units = [(1, [1, 2, 3]), (2, [4, 5]), (3, [6, 7, 8, 9]), (4, [13, 14, 15])]
     col, row = cv.to_pixel(-60.0, -50.0)
-    anchors = [(4, [10, 11], int(row), int(col), "center")]
-    seas = [12, 13, 14, 15]
-    p = Params(bar_w=2, bar_h=4, gap=2, line_w=12, sea_cell=16, off_cell=20, min_sea=8, min_off=8)
-    return globe, layout(globe, units, anchors, seas, 16, p)
+    anchors = [(10, [10, 11, 12], int(row), int(col), "center", (0, 2))]
+    p = Params(bar_w=4, bar_h=4, gap=2, line_w=24, sea_cell=16, open_cell=16, off_cell=20, min_sea=8, min_off=8)
+    return globe, layout(globe, units, anchors, 16, p)
+
+
+SMALL_RUNS = {1: [1, 2, 3], 2: [4, 5], 3: [6, 7, 8, 9], 4: [13, 14, 15], 10: [10, 11, 12]}
 
 
 def test_exp09_layout_filler_and_bars():
+    from experiments.synth import run_widths
     globe, lay = small_layout()
     pid = lay.pid
     off = np.isin(pid, lay.off_ids)
     mism = np.nonzero(off == globe)
     assert len(mism[0]) <= 4 and (mism[1] == pid.shape[1] - 1).all()     # only the seam-tip exceptions
-    for i in range(1, 12):
-        m = pid == i
-        assert m.sum() == 8 and ndimage.label(m, structure=FOUR)[1] == 1  # every land/lake bar 2x4
-    for i in (12, 13, 14, 15):
-        assert (pid == i).any()                                            # vanilla sea IDs used
+    for key, ids in SMALL_RUNS.items():
+        assert lay.runs[key] == ids
+        for i, w in zip(ids, run_widths(len(ids), 4)):                     # 4x4 bars, doubled middle bar if even
+            m = pid == i
+            ys, xs = np.nonzero(m)
+            assert m.sum() == 4 * w and ndimage.label(m, structure=FOUR)[1] == 1 and xs.max() - xs.min() + 1 == w
     assert len(x_crossings(pid)[0]) == 0
     a = np.bincount(pid.ravel())
     assert (a[1:][a[1:] > 0] >= 8).all() and set(np.unique(pid).tolist()) == set(range(1, int(pid.max()) + 1))
+    assert min(lay.sea_new) == 16 and min(lay.off_ids) == max(lay.sea_new) + 1
+
+
+def test_exp09_layout_every_region_mean_is_inside_a_member_box():
+    """P00b-f4: every run (a vanilla region) and every new sea/filler region never takes the centre fallback."""
+    from experiments.regioncentre import guard_failures, region_centres
+    globe, lay = small_layout()
+    regions = dict(SMALL_RUNS)
+    new = lay.sea_regions + lay.off_regions
+    for k, (_, ids) in enumerate(new):
+        regions[100 + k] = ids
+    assert sorted(i for _, ids in lay.sea_regions for i in ids) == lay.sea_new
+    assert sorted(i for _, ids in lay.off_regions for i in ids) == lay.off_ids
+    cs = region_centres(lay.pid, regions)
+    assert guard_failures(cs, {}) == []
+    assert all(c.clear and not c.fallback_strict and not c.seam for c in cs.values())
+
+
+def test_exp09_run_widths_keep_the_mean_off_box_edges():
+    from experiments.synth import run_margin, run_widths
+    for w in (4, 6):
+        for k in range(1, 400):
+            ws = run_widths(k, w)
+            assert len(ws) == k and run_margin(ws, 20) >= 1, (w, k)
+    assert run_margin([6] * 4, 20) <= 0                  # the old equal-width strip: mean on a shared edge
 
 
 def test_exp09_layout_rejects_oversized_state():
     from experiments.synth import Params, layout
     globe = np.ones((64, 128), bool)
     with pytest.raises(KitError):
-        layout(globe, [(1, list(range(1, 40)))], [], [], 40, Params(bar_w=4, bar_h=4, line_w=20))
+        layout(globe, [(1, list(range(1, 40)))], [], 40, Params(bar_w=4, bar_h=4, line_w=20))
+
+
+def test_exp09_layout_rejects_bars_too_small_for_the_guard():
+    from experiments.synth import Params, layout
+    globe = np.ones((64, 128), bool)
+    with pytest.raises(KitError):
+        layout(globe, [(1, [1, 2])], [], 3, Params(bar_w=3, bar_h=4, line_w=60))
 
 
 # ---------------------------------------------------------------- r2 additions
@@ -337,10 +375,13 @@ def test_exp09_layout_north_tiles_get_new_ids():
     cv = ee_project().Canvas(512, 256, 10.9, -60.0, 90.0)
     globe = cv.globe_mask()
     north_row = int(cv.to_pixel(10.9, 50.0)[1])
-    p = Params(bar_w=2, bar_h=4, gap=2, line_w=12, sea_cell=16, off_cell=20, min_sea=8, min_off=8)
-    lay = layout(globe, [(1, [1, 2, 3])], [], [4, 5, 6], 7, p, north_row=north_row)
+    p = Params(bar_w=4, bar_h=4, gap=2, line_w=24, sea_cell=16, open_cell=16, off_cell=20, min_sea=8, min_off=8)
+    lay = layout(globe, [(1, [1, 2, 3]), (2, [4, 5, 6])], [], 7, p, north_row=north_row)
     assert lay.sea_north and lay.sea_new[:len(lay.sea_north)] == lay.sea_north
     ys, xs = np.nonzero(np.isin(lay.pid, lay.sea_north))
     assert ys.mean() < north_row
-    for i in (4, 5, 6):                                         # vanilla sea IDs sit south of the northern band
-        assert np.nonzero(lay.pid == i)[0].mean() >= north_row - 16
+    for i in (4, 5, 6):                                         # the sea bars of region 2 sit in the central block
+        assert np.nonzero(lay.pid == i)[0].mean() >= north_row
+    north = set(lay.sea_north)
+    for side, ids in lay.sea_regions:                           # a region never mixes cold and warm tiles
+        assert {i in north for i in ids} == {side == "north"}
