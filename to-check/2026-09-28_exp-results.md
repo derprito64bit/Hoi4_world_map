@@ -13,7 +13,8 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-02-600 (land 1664 + sea 5367, 600 px wide) | 2026-09-28 | "got into menu, game runs, loaded very fast, a couple of seconds, no issues" | `system.log`: EXP-02-600 active; `error.log`: 0 lines with BOX/1664/5367; game launched; no new crash dump | **Loads** (600 px) |
 | EXP-02-1200 (land 2972 + sea 8337, 1200 px wide) | 2026-09-28 22:28 | "same result as last time" (menu, game runs, loads in a couple of seconds) | `system.log`: EXP-02-1200 active; `error.log`: 0 lines with BOX/2972/8337; game launched; no new crash dump | **Loads** (1200 px) |
 | EXP-02b (larger: full-width strip, solid blocks) | — | owner asked for larger tests; WU P00b-f2 | — | building |
-| EXP-03 … EXP-07 | — | — | — | pending |
+| EXP-03-16k (16,000 provinces) | 2026-09-28 22:31 | "loaded, a couple of seconds into the scenario, runs very smooth as if it's still vanilla"; PC: 32 GB DDR4-3600, RX 6700 XT, Ryzen 5 5600X | game.log: **Loaded 16001 provinces**; defines → provinces 21 s (vanilla runs today: 20 s); game launched; error.log only the 5 usual non-mod lines; no new crash dump | **Loads, smooth** |
+| EXP-03-20k … EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
