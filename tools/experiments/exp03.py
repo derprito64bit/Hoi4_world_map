@@ -54,13 +54,20 @@ from .mapdata import (LAND, SEA, Definition, adjacency_ids, adjacency_links, adj
                       fix_x_crossings, game_xz, height_at, interior_points, new_colors, pid_from_rgb, rgb_from_pid,
                       x_crossings)
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, position_pixels, split_lines
-from .regioncentre import province_boxes, region_centre, region_centres
+from .regioncentre import guard_failures, pixel_boxes, region_centre, region_centres
 
 TARGETS = {"16k": 16000, "20k": 20000, "24k": 24000, "30k": 30000}
 FIX_VARIANT = "24k-fix"                 # 24,000 provinces with the region-centre guard
 TRAP_VARIANT = "div0"                   # positive control: vanilla + one split province -> region centre / 0
 VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None}
-KNOWN_UNSAFE = {"24k": [191]}           # in-game crash 2026-09-29 (dump: region 191 Northern Norway)
+# EXP-03-24k is kept byte-identical as the record of the in-game crash (2026-09-29, dump: region 191
+# Northern Norway), so --check requires it to stay unsafe. Revisit this entry when the owner reports the
+# 24k-fix / div0 bisect: if div0 crashes and 24k-fix loads, keep it as the confirmed reproducer; otherwise
+# the model is incomplete and this entry (and regioncentre.py) must be corrected first.
+KNOWN_UNSAFE = {"24k": [191]}
+# Builds seen loading in game: region-centre findings there are evidence, never a --check failure
+# (none of them has one under the conservative model as of P00b-f3 r2).
+OBSERVED_LOADING = {"16k", "20k", "30k"}
 CRASH_RVA = 0x15A4CDC                   # hoi4.exe 1.19.3.0.c01a, strategicregiontemplate.cpp region centre
 TRAP_KS = (2, 3, 4)
 MIN_CHILD = 40          # px; well above the 8-px engine floor and near vanilla's p5 (68)
@@ -302,19 +309,30 @@ def region_lookup(v, n0: int) -> np.ndarray:
     return out
 
 
-def unsafe_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray) -> list:
-    return [r for r, c in region_centres(pid, region_members(root, region_of)).items() if c.unsafe]
+def centres_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray) -> dict:
+    return region_centres(pid, region_members(root, region_of))
+
+
+def unsafe_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray, observed: dict | None = None) -> list:
+    """Guard failures: conservatively unsafe regions, plus wrapping (unknown) regions that take the
+    fallback and have no identical twin in ``observed`` (centres of a map seen loading, e.g. vanilla)."""
+    return guard_failures(centres_of(pid, root, region_of), observed)
+
+
+def vanilla_centres(van_pid: np.ndarray, region_of: np.ndarray) -> dict:
+    return centres_of(van_pid, np.arange(len(region_of)), region_of)
 
 
 def guarded_subdivide(van_pid, types, extra, keep_pixel, coastal_needed, frozen, region_of, max_rounds: int = 8):
-    """subdivide() that re-plans until no strategic region divides by zero in the engine.
+    """subdivide() that re-plans until no strategic region fails the region-centre guard.
 
-    Per unsafe region one of its split parents (fewest pieces, then lowest ID) is
+    Per failing region one of its split parents (fewest pieces, then lowest ID) is
     frozen (left whole) and the plan is re-run with the same ``extra``; returns
     (pid, root, [(region, frozen parent), ...], [parents cut into more pieces than
-    in the unguarded plan]).
+    in the unguarded plan]). Unknown (wrapping) regions only pass if identical to vanilla.
     """
     n0 = len(types)
+    observed = vanilla_centres(van_pid, region_of)
     fz = set(frozen)
     guard = []
     first = None
@@ -323,41 +341,44 @@ def guarded_subdivide(van_pid, types, extra, keep_pixel, coastal_needed, frozen,
         kids = np.bincount(root[n0:], minlength=n0)
         if first is None:
             first = kids
-        bad = unsafe_of(pid, root, region_of)
+        bad = unsafe_of(pid, root, region_of, observed)
         if not bad:
             return pid, root, guard, [int(p) for p in np.nonzero(kids > first)[0]]
         for rid in bad:
             parents = sorted((p for p in range(1, n0) if kids[p] and region_of[p] == rid), key=lambda p: (kids[p], p))
             if not parents:
-                raise KitError(f"region {rid} divides by zero without any split province (vanilla geometry)")
+                raise KitError(f"region {rid} fails the region-centre guard without any split province")
             fz.add(parents[0])
             guard.append((int(rid), int(parents[0])))
     raise KitError(f"region-centre guard did not converge in {max_rounds} rounds")
 
 
 def _piece_boxes(lab: np.ndarray, r0: int, c0: int, H: int):
-    """Engine boxes (x0, y0 from the bottom, w, h) of the pieces 0..m-1 of a split_mask() result."""
+    """Pixel boxes (xmin, xmax, ymin, ymax; y from the bottom) of the pieces 0..m-1 of a split_mask() result."""
     out = []
     for q in range(int(lab.max()) + 1):
         ys, xs = np.nonzero(lab == q)
-        out.append((c0 + int(xs.min()), H - 1 - (r0 + int(ys.max())), int(xs.max() - xs.min()) + 1,
-                    int(ys.max() - ys.min()) + 1))
+        out.append((c0 + int(xs.min()), c0 + int(xs.max()), H - 1 - (r0 + int(ys.max())), H - 1 - (r0 + int(ys.min()))))
     return out
 
 
-def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
-    """Yield (region, province, pieces) whose split alone makes that region divide by zero (model only).
+def _is_trap(c) -> bool:
+    """The observed crash under every box convention: fallback even with the widest box, dx == 0, no wrap."""
+    return c.fallback_all and c.dx == 0 and not c.seam
 
-    Regions that already take the engine's fallback path are searched first, by
-    the size of their vanilla divisor; seam regions are skipped.
+
+def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
+    """Yield (region, province, pieces) whose split alone recreates the observed dx == 0 crash (model only).
+
+    Regions that already take the fallback are searched first, by |dx|; wrapping regions are skipped.
     """
     H, W = van_pid.shape
     n0 = len(types)
     root = np.arange(n0)
     regions = region_members(root, region_of)
-    boxes = province_boxes(van_pid, n0)
+    boxes = pixel_boxes(van_pid, n0)
     cs = region_centres(van_pid, regions)
-    order = sorted((c for c in cs.values() if c.fallback and not c.seam), key=lambda c: (abs(c.divisor), c.region))
+    order = sorted((c for c in cs.values() if c.fallback and not c.seam), key=lambda c: (abs(c.dx), c.region))
     objs = ndimage.find_objects(van_pid + 1)
     area = areas(van_pid, n0)
     for c in order:
@@ -380,17 +401,19 @@ def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
                 for j in range(4):
                     ext[j][p] = pb[0][j]
                 mem = list(ids) + list(range(n0, n0 + k - 1))
-                if region_centre(c.region, mem, tuple(ext), W).unsafe:
+                if _is_trap(region_centre(c.region, mem, tuple(ext), W)):
                     yield int(c.region), int(p), k
 
 
 def trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen, min_px: int = MIN_CHILD):
     """(pid, root, (region, province, pieces)) for the first model candidate that survives the full pipeline."""
     n0 = len(types)
+    observed = vanilla_centres(van_pid, region_of)
     for rid, p, k in trap_candidates(van_pid, types, region_of, frozen, min_px):
         fz = set(range(1, n0)) - {p}
         pid, root = subdivide(van_pid, types, k - 1, np.arange(n0), keep_pixel, coastal_needed, min_px, frozen=fz)
-        if unsafe_of(pid, root, region_of) == [rid]:
+        cs = centres_of(pid, root, region_of)
+        if guard_failures(cs, observed) == [rid] and _is_trap(cs[rid]):
             return pid, root, (rid, p, k)
     raise KitError("no single-province split recreates the region-centre division by zero")
 
@@ -766,18 +789,22 @@ class Exp03(Experiment):
         types = np.array([types_v[r] for r in root], dtype=np.int8)
         if (types[n0:] != LAND).any():
             probs.append("a new province is not a piece of a land province")
-        # strategic-region centre (P00b-f3): only the recorded / intended regions may divide by zero
+        # strategic-region centre (P00b-f3, conservative model): only the recorded / intended regions may fail
+        # the guard (unsafe, or wrapping + fallback without an identical vanilla twin)
         region_of = region_lookup(v, n0)
-        unsafe = unsafe_of(pid, root, region_of)
+        cs = centres_of(pid, root, region_of)
+        fails = guard_failures(cs, vanilla_centres(van, region_of))
         if key == TRAP_VARIANT:
             parents = sorted(set(root[n0:].tolist()))
-            want_unsafe = sorted({int(region_of[p]) for p in parents})
+            want_fails = sorted({int(region_of[p]) for p in parents})
             if len(parents) != 1:
                 probs.append(f"div0: new pieces come from {len(parents)} provinces, expected exactly one")
+            elif not all(cs[r].fallback_all and cs[r].dx == 0 for r in want_fails):
+                probs.append(f"div0: region {want_fails} is not the observed dx == 0 case under every convention")
         else:
-            want_unsafe = KNOWN_UNSAFE.get(key, [])
-        if unsafe != want_unsafe:
-            probs.append(f"regions whose centre divides by zero: {unsafe}, expected {want_unsafe}")
+            want_fails = KNOWN_UNSAFE.get(key, [])
+        if fails != want_fails and key not in OBSERVED_LOADING:
+            probs.append(f"regions failing the region-centre guard: {fails}, expected {want_fails}")
         # definition rows
         for i in range(1, n):
             r, pr = d.rows[i], vdef.rows[int(root[i])]
