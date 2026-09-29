@@ -98,10 +98,10 @@
       "depends_on": [
         "P00b-f2"
       ],
-      "status": "review",
+      "status": "changes_requested",
       "branch": "wu/P00b-f3",
-      "attempts": 1,
-      "notes": "crash dump crashes/hoi4_20260929_074145; must identify which generated property triggers it so P05 avoids it; r1 4c0388f: root cause region-centre div0 (region 191 in 24k); variants 24k-fix, div0"
+      "attempts": 2,
+      "notes": "crash dump crashes/hoi4_20260929_074145; must identify which generated property triggers it so P05 avoids it; r1 4c0388f: root cause region-centre div0 (region 191 in 24k); variants 24k-fix, div0; review r1 0/2/5 -> r2"
     },
     {
       "id": "P00b-f4",
