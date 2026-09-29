@@ -11,7 +11,9 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-01-SEAM-B (same pair, empty type, Through −1) | 2026-09-28 22:05 | **Game starts, no crash.** Fleet in 2560 (Penzhina Bay), right-click 3836: "it takes a path that goes through the entire soviet union, parts of europe and canada" = reading (b): link used, route drawn the long way across the whole map (not wrapped) | `system.log`: active SEAM-B + 3 helper Workshop mods (Toolpack without the Errors, Modifier GUI Updated, Precise Buffs – Cheat Ideas), none with `map/` or `common/defines/` files. No new crash dump after 21:52. error.log: no line from the mod | **Loads; link used but not wrapped (b).** Owner: the order shows "roughly a year or two" of travel; the fleet then ran out of fuel and returned to base. → the engine measures the link as the unwrapped distance (~5,350 px). **Useless for crossing the seam** |
 | EXP-02-300 (land 1664 + sea 5426 spread to 300 px wide) | 2026-09-28 22:21 | "reached main menu, started and ran just fine, loaded very fast" | `system.log`: active EXP-02-300 + the 3 helper mods (no map files). `error.log`: no line with BOX/box/1664/5426 and no other line from the mod. game.log: 13,414 provinces, game launched. No new crash dump | **Loads** (300 px land and sea) |
 | EXP-02-600 (land 1664 + sea 5367, 600 px wide) | 2026-09-28 | "got into menu, game runs, loaded very fast, a couple of seconds, no issues" | `system.log`: EXP-02-600 active; `error.log`: 0 lines with BOX/1664/5367; game launched; no new crash dump | **Loads** (600 px) |
-| EXP-02-1200, EXP-03 … EXP-07 | — | — | — | pending |
+| EXP-02-1200 (land 2972 + sea 8337, 1200 px wide) | 2026-09-28 22:28 | "same result as last time" (menu, game runs, loads in a couple of seconds) | `system.log`: EXP-02-1200 active; `error.log`: 0 lines with BOX/2972/8337; game launched; no new crash dump | **Loads** (1200 px) |
+| EXP-02b (larger: full-width strip, solid blocks) | — | owner asked for larger tests; WU P00b-f2 | — | building |
+| EXP-03 … EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
@@ -21,10 +23,14 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 ## Interim reading (before SEAM runs)
 - Both row forms join two non-touching sea provinces with no error.log line: A (`sea` type, sea Through) and B (empty type, Through −1). B is the simpler form (no dummy Through) and is the candidate for seam links. SEAM-A/B show whether a link survives the wrap seam, which is what the seam-link method needs.
 
+## EXP-02 reading
+- A 1-px strip province with a bounding box 300 / 600 / 1200 px wide loads for both land and sea, with no BOX line in error.log. The spec limit BBOX_MAX 250/180 is far below what loads. Caveat: the strips have few pixels. EXP-02b (full-width strip; solid 400×400 and 800×800 blocks) tests large *filled* provinces before any BBOX_MAX change (owner gate).
+- Q-009 note: option A (sea corridors whose pixels touch across the wrap) uses the same mechanism as vanilla's own Pacific wrap, where seas touch at x=0/x=5631 and fleets cross normally, so it needs no separate engine test. Only its look (EXP-09/P14) remains open.
+
 ## Questions for the owner
 | ID | Question | Options | Status |
 |---|---|---|---|
-| Q-009 | How do ships cross the map's left/right edge where the Equal Earth outline curves away (Bering Sea, the Arctic)? `adjacencies.csv` links can't do it (EXP-01). | **A (recommended):** real sea corridors — draw a band of sea provinces through the off-globe filler so the water pixels touch across the wrap edge. The engine then measures the distance the short way, as vanilla's own Pacific wrap does. The corridor is visible in the off-globe area; P14/EXP-09 shading can soften it. Needs its own test (EXP-10). **B:** no crossing at high latitudes: ships go around via the equator, where the two edges meet naturally (Bering and Arctic routes become very long). **C:** move the seam (the central meridian lon0 10.9) so it crosses as little high-latitude sea as possible; the Arctic is cut anyway, so C reduces the problem but does not remove it. | OPEN |
+| Q-009 | How do ships cross the map's left/right edge where the Equal Earth outline curves away (Bering Sea, the Arctic)? `adjacencies.csv` links can't do it (EXP-01). | **A (recommended):** real sea corridors — draw a band of sea provinces through the off-globe filler so the water pixels touch across the wrap edge. The engine then measures the distance the short way, as vanilla's own Pacific wrap does. The corridor is visible in the off-globe area; P14/EXP-09 shading can soften it. Uses the same mechanism as vanilla's own Pacific wrap (no separate engine test needed). **B:** no crossing at high latitudes: ships go around via the equator, where the two edges meet naturally (Bering and Arctic routes become very long). **C:** move the seam (the central meridian lon0 10.9) so it crosses as little high-latitude sea as possible; the Arctic is cut anyway, so C reduces the problem but does not remove it. | OPEN |
 
 ## Open owner items
 | ID | Item | Status |
