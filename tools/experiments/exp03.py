@@ -23,6 +23,19 @@ province 761 in the 30k variant and lost its contact with strait sea 9092).
 
 EXP-04 rides in the 20k variant: three extra provinces of exactly 6, 7 and 8 px
 are carved out of the interior of three split pieces (IDs N-2, N-1, N).
+
+P00b-f3 (the 24k crash, see regioncentre.py and diag03.py): the engine
+divides by zero while computing a strategic region's centre when the mean of its
+provinces' box centres lies outside every member box and is vertically aligned
+with the region rectangle's centre. EXP-03-24k hits that in region 191 (Northern
+Norway) by chance; the four original variants are kept byte-identical. Two
+bisect variants were added:
+
+* EXP-03-24k-fix  the 24k plan with a region-centre guard: a split parent of an
+                  unsafe region is left unsplit and the plan is re-run (same count)
+* EXP-03-div0     positive control: vanilla plus the pieces of ONE land province,
+                  chosen so that exactly one region divides by zero; expected to
+                  crash at the same code address
 """
 from __future__ import annotations
 
@@ -41,8 +54,15 @@ from .mapdata import (LAND, SEA, Definition, adjacency_ids, adjacency_links, adj
                       fix_x_crossings, game_xz, height_at, interior_points, new_colors, pid_from_rgb, rgb_from_pid,
                       x_crossings)
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, position_pixels, split_lines
+from .regioncentre import province_boxes, region_centre, region_centres
 
 TARGETS = {"16k": 16000, "20k": 20000, "24k": 24000, "30k": 30000}
+FIX_VARIANT = "24k-fix"                 # 24,000 provinces with the region-centre guard
+TRAP_VARIANT = "div0"                   # positive control: vanilla + one split province -> region centre / 0
+VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None}
+KNOWN_UNSAFE = {"24k": [191]}           # in-game crash 2026-09-29 (dump: region 191 Northern Norway)
+CRASH_RVA = 0x15A4CDC                   # hoi4.exe 1.19.3.0.c01a, strategicregiontemplate.cpp region centre
+TRAP_KS = (2, 3, 4)
 MIN_CHILD = 40          # px; well above the 8-px engine floor and near vanilla's p5 (68)
 SMALL_SIZES = (6, 7, 8)
 SMALL_VARIANT = "20k"
@@ -262,6 +282,119 @@ def carve_small(pid: np.ndarray, root: np.ndarray, types: np.ndarray, sizes, hos
     return pid, np.array(root, dtype=np.int64), out
 
 
+# ------------------------------------------------------------------ region centres (P00b-f3)
+def region_members(root: np.ndarray, region_of: np.ndarray) -> dict:
+    """{region id: [province ids]} where every piece inherits its vanilla ancestor's region."""
+    out = defaultdict(list)
+    for i, r in enumerate(root.tolist()):
+        rid = int(region_of[r]) if i else -1
+        if rid >= 0:
+            out[rid].append(i)
+    return dict(out)
+
+
+def region_lookup(v, n0: int) -> np.ndarray:
+    """Array vanilla id -> strategic region id (-1 = none)."""
+    out = np.full(n0, -1, dtype=np.int64)
+    for p, (rid, _) in v.province_region.items():
+        if 0 < p < n0:
+            out[p] = rid
+    return out
+
+
+def unsafe_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray) -> list:
+    return [r for r, c in region_centres(pid, region_members(root, region_of)).items() if c.unsafe]
+
+
+def guarded_subdivide(van_pid, types, extra, keep_pixel, coastal_needed, frozen, region_of, max_rounds: int = 8):
+    """subdivide() that re-plans until no strategic region divides by zero in the engine.
+
+    Per unsafe region one of its split parents (fewest pieces, then lowest ID) is
+    frozen (left whole) and the plan is re-run with the same ``extra``; returns
+    (pid, root, [(region, frozen parent), ...], [parents cut into more pieces than
+    in the unguarded plan]).
+    """
+    n0 = len(types)
+    fz = set(frozen)
+    guard = []
+    first = None
+    for _ in range(max_rounds):
+        pid, root = subdivide(van_pid, types, extra, np.arange(n0), keep_pixel, coastal_needed, frozen=fz)
+        kids = np.bincount(root[n0:], minlength=n0)
+        if first is None:
+            first = kids
+        bad = unsafe_of(pid, root, region_of)
+        if not bad:
+            return pid, root, guard, [int(p) for p in np.nonzero(kids > first)[0]]
+        for rid in bad:
+            parents = sorted((p for p in range(1, n0) if kids[p] and region_of[p] == rid), key=lambda p: (kids[p], p))
+            if not parents:
+                raise KitError(f"region {rid} divides by zero without any split province (vanilla geometry)")
+            fz.add(parents[0])
+            guard.append((int(rid), int(parents[0])))
+    raise KitError(f"region-centre guard did not converge in {max_rounds} rounds")
+
+
+def _piece_boxes(lab: np.ndarray, r0: int, c0: int, H: int):
+    """Engine boxes (x0, y0 from the bottom, w, h) of the pieces 0..m-1 of a split_mask() result."""
+    out = []
+    for q in range(int(lab.max()) + 1):
+        ys, xs = np.nonzero(lab == q)
+        out.append((c0 + int(xs.min()), H - 1 - (r0 + int(ys.max())), int(xs.max() - xs.min()) + 1,
+                    int(ys.max() - ys.min()) + 1))
+    return out
+
+
+def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
+    """Yield (region, province, pieces) whose split alone makes that region divide by zero (model only).
+
+    Regions that already take the engine's fallback path are searched first, by
+    the size of their vanilla divisor; seam regions are skipped.
+    """
+    H, W = van_pid.shape
+    n0 = len(types)
+    root = np.arange(n0)
+    regions = region_members(root, region_of)
+    boxes = province_boxes(van_pid, n0)
+    cs = region_centres(van_pid, regions)
+    order = sorted((c for c in cs.values() if c.fallback and not c.seam), key=lambda c: (abs(c.divisor), c.region))
+    objs = ndimage.find_objects(van_pid + 1)
+    area = areas(van_pid, n0)
+    for c in order:
+        ids = regions[c.region]
+        for p in sorted(ids):
+            sl = objs[p]
+            if types[p] != LAND or p in frozen or sl is None or area[p] < 2 * min_px:
+                continue
+            m = van_pid[sl] == p
+            if ndimage.label(m, structure=FOUR)[1] != 1:
+                continue
+            for k in TRAP_KS:
+                if area[p] / k < min_px:
+                    break
+                lab = split_mask(m, k, min_px)
+                if int(lab.max()) + 1 != k:
+                    continue
+                pb = _piece_boxes(lab, sl[0].start, sl[1].start, H)
+                ext = [np.concatenate([a, np.array([b[j] for b in pb[1:]], dtype=np.int64)]) for j, a in enumerate(boxes)]
+                for j in range(4):
+                    ext[j][p] = pb[0][j]
+                mem = list(ids) + list(range(n0, n0 + k - 1))
+                if region_centre(c.region, mem, tuple(ext), W).unsafe:
+                    yield int(c.region), int(p), k
+
+
+def trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen, min_px: int = MIN_CHILD):
+    """(pid, root, (region, province, pieces)) for the first model candidate that survives the full pipeline."""
+    n0 = len(types)
+    for rid, p, k in trap_candidates(van_pid, types, region_of, frozen, min_px):
+        fz = set(range(1, n0)) - {p}
+        pid, root = subdivide(van_pid, types, k - 1, np.arange(n0), keep_pixel, coastal_needed, min_px, frozen=fz)
+        if unsafe_of(pid, root, region_of) == [rid]:
+            return pid, root, (rid, p, k)
+    raise KitError("no single-province split recreates the region-centre division by zero")
+
+
 # ------------------------------------------------------------------ dependent files
 def update_railways(text: str, pid_pairs: set, root: np.ndarray) -> tuple:
     """Insert family paths where consecutive rail provinces no longer touch. Returns (text, inserted count)."""
@@ -328,14 +461,18 @@ class Exp03(Experiment):
     priority = 3
 
     def build_ids(self, ctx):
-        return [f"EXP-03-{k}" for k in TARGETS]
+        return [f"EXP-03-{k}" for k in VARIANTS]
 
     def key(self, build_id):
-        return build_id.split("-")[-1]
+        return build_id[len("EXP-03-"):]
 
     def title_for(self, build_id):
         k = self.key(build_id)
-        t = f"{TARGETS[k]:,} provinces"
+        if k == TRAP_VARIANT:
+            return "vanilla + one split province, region-centre division by zero (expected CRASH)"
+        t = f"{VARIANTS[k]:,} provinces"
+        if k == FIX_VARIANT:
+            return t + ", region-centre guard"
         return t + " + 6/7/8-px provinces (EXP-04)" if k == SMALL_VARIANT else t
 
     def expected(self, build_id):
@@ -347,16 +484,14 @@ class Exp03(Experiment):
 
     # -------------------------------------------------------------- build
     def make(self, v, build_id):
-        target = TARGETS[self.key(build_id)]
-        small = SMALL_SIZES if self.key(build_id) == SMALL_VARIANT else ()
+        """(pid, root, smalls, info) for one variant; info holds the guard / trap decisions."""
+        key = self.key(build_id)
+        small = SMALL_SIZES if key == SMALL_VARIANT else ()
         van_pid = np.asarray(v.pid)
         types = v.types
         vdef = v.definition
         n0 = vdef.n
         H, W = van_pid.shape
-        extra = target - (n0 - 1) - len(small)
-        if extra <= 0:
-            raise KitError("target below the vanilla province count")
         bl, btr = split_lines(v.text("map/buildings.txt"))
         bpix = position_pixels(bl, 2, 4, H, W)
         keep_pixel = {}
@@ -370,22 +505,38 @@ class Exp03(Experiment):
             keep_pixel.setdefault(p, rc)
         coastal_needed = {i for i in range(1, n0) if types[i] == LAND and vdef.rows[i][5] == "true"}
         frozen = adjacency_ids(v.text("map/adjacencies.csv"))
-        pid, root = subdivide(van_pid, types, extra, np.arange(n0), keep_pixel, coastal_needed, frozen=frozen)
+        info = {}
+        if key == TRAP_VARIANT:
+            region_of = region_lookup(v, n0)
+            pid, root, (rid, p, k) = trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen)
+            info["trap"] = {"region": rid, "province": p, "pieces": k,
+                            "region_file": v.province_region[p][1], "state_file": v.province_state[p][1]}
+            return pid, root, [], info
+        extra = VARIANTS[key] - (n0 - 1) - len(small)
+        if extra <= 0:
+            raise KitError("target below the vanilla province count")
+        if key == FIX_VARIANT:
+            pid, root, guard, moved = guarded_subdivide(van_pid, types, extra, keep_pixel, coastal_needed, frozen,
+                                                        region_lookup(v, n0))
+            info["guard"] = [{"region": r, "unsplit": p, "region_file": v.province_region[p][1]} for r, p in guard]
+            info["cut_instead"] = [{"province": p, "state_file": v.province_state[p][1]} for p in moved]
+        else:
+            pid, root = subdivide(van_pid, types, extra, np.arange(n0), keep_pixel, coastal_needed, frozen=frozen)
         smalls = []
         if small:
             split_members = {i for i in range(n0, len(root))}
             pid, root, smalls = carve_small(pid, root, types, small, split_members)
-        return pid, root, smalls
+        return pid, root, smalls, info
 
     def build(self, ctx, build_id, out: Path):
         v = ctx.vanilla
-        pid, root, smalls = self.make(v, build_id)
+        pid, root, smalls, info = self.make(v, build_id)
         files = self.dependent_files(v, pid, root, smalls)
         for rel, data in files.items():
             write_bytes(out, rel, data)
         where = {i: v.province_state[int(root[i])][1].rsplit(".", 1)[0] for i, _, _, _ in smalls}
-        return {"target": TARGETS[self.key(build_id)], "smalls": [(i, s) for i, _, s, _ in smalls],
-                "where": where, "new": int(len(root) - v.definition.n)}
+        return {"target": int(len(root) - 1), "smalls": [(i, s) for i, _, s, _ in smalls],
+                "where": where, "new": int(len(root) - v.definition.n), **info}
 
     def dependent_files(self, v, pid, root, smalls) -> dict:
         vdef = v.definition
@@ -494,6 +645,8 @@ class Exp03(Experiment):
 
     # -------------------------------------------------------------- README
     def readme(self, ctx, build_id, info):
+        if self.key(build_id) in (FIX_VARIANT, TRAP_VARIANT):
+            return self.readme_bisect(ctx, build_id, info)
         target = info["target"]
         steps = ["When the main menu appears, note the loading time. Start a new game (1936) with any country, "
                  "unpause and let 7 in-game days pass at speed 3, then pause.",
@@ -527,13 +680,64 @@ class Exp03(Experiment):
             launch=texts.LAUNCH_NORMAL, steps=steps, send=send,
             expected=self.expected(build_id).text, cannot=cannot, user_dir=ctx.user, notes=notes)
 
+    def readme_bisect(self, ctx, build_id, info):
+        """Owner sheet for the two P00b-f3 variants (24k-fix must load, div0 must crash)."""
+        ud = str(ctx.user).replace("\\", "/") if ctx.user else "$HOI4_USER_DIR"
+        crash_send = (f"If it crashed: the newest folder in {ud}/crashes/ -> open exception.txt with Notepad and copy "
+                      "the lines from 'Unhandled Exception' down to line 3 of the Stack Trace. Also say whether "
+                      "game.log (in the same folder's logs/ or in logs/) contains 'Loaded' followed by a number of "
+                      "provinces.")
+        launch = ("Start the game from the launcher (Play) WITHOUT -debug. Note whether the main menu appears or the "
+                  "game closes/crashes while loading. One try is enough; do not retry with -debug.")
+        notes = ["Background: EXP-03-24k crashed while loading (divide by zero) although 30k loaded. The crash dump "
+                 "shows the game computing the centre of one strategic region (Northern Norway) and dividing by "
+                 "zero; see tools/experiments/regioncentre.py. These two builds test that explanation from both "
+                 "sides.",
+                 "Run order: EXP-03-24k-fix first, then EXP-03-div0. Report both results even if the first one "
+                 "is not what we expect."]
+        if self.key(build_id) == FIX_VARIANT:
+            g = ", ".join(f"{x['unsplit']} (region file '{x['region_file']}')" for x in info.get("guard", []))
+            c = ", ".join(f"{x['province']} (state file '{x['state_file']}')" for x in info.get("cut_instead", []))
+            prop = (f"The number of provinces: {info['target']:,}, exactly like EXP-03-24k, but the province cuts were "
+                    "planned with a guard so that no strategic region hits the centre division by zero. Compared "
+                    f"with EXP-03-24k only this changes: vanilla provinces {g or '-'} stay whole, and instead "
+                    f"vanilla provinces {c or '-'} get one more cut. The new pieces are numbered differently.")
+            why = ("If this loads, the 24k crash was the region-centre division and not the province count: the "
+                   "province budget is then limited by performance only (30k loads).")
+            steps = ["If the main menu appears: start a new game (1936) with any country, unpause and let 7 in-game "
+                     "days pass at speed 3, then pause. Note: did it crash? How smooth was it?"]
+            send = ["Loaded to the main menu: yes / no. Loading time from Play to the main menu (seconds).",
+                    "Game started and 7 days passed: yes / no / crashed (when?).", crash_send]
+            expected_result = "EXPECTED IN GAME: loads and runs like EXP-03-30k."
+        else:
+            t = info["trap"]
+            prop = (f"Vanilla map plus ONE extra change: vanilla land province {t['province']} (state file "
+                    f"'{t['state_file']}') is cut into {t['pieces']} pieces. The cut is chosen so that the game's "
+                    f"centre calculation for strategic region {t['region']} ('{t['region_file']}') divides by zero, "
+                    "the same way EXP-03-24k did in Northern Norway.")
+            why = ("A deliberate crash test (positive control). If this crashes at the same place as EXP-03-24k, the "
+                   "cause is confirmed and the real map generator can simply avoid it.")
+            steps = ["EXPECTED: the game closes or shows a crash window while loading, before the main menu. That "
+                     "is the intended result. If the main menu appears instead, quit the game (no need to start a "
+                     "campaign)."]
+            send = ["Crashed while loading: yes / no (main menu appeared).", crash_send]
+            expected_result = (f"EXPECTED IN GAME: crash while loading with EXCEPTION_INT_DIVIDE_BY_ZERO at the same "
+                               f"address as EXP-03-24k (hoi4.exe offset 0x{CRASH_RVA:X}; 0x7FF6129C4CDC in the "
+                               "2026-09-29 dumps).")
+        return texts.readme(
+            build_id, self.title_for(build_id), prop=prop, why=why, launch=launch, steps=steps, send=send,
+            expected=self.expected(build_id).text, cannot=["EXP-03"], user_dir=ctx.user,
+            notes=[expected_result] + notes,
+            cannot_extra=["Whether other, unrelated engine limits exist between 24k and 30k provinces: this pair only "
+                          "tests the region-centre explanation."])
+
     # -------------------------------------------------------------- check
     def check(self, ctx, build_id, out):
         v = ctx.vanilla
         key = self.key(build_id)
-        target = TARGETS[key]
         vdef = v.definition
         n0 = vdef.n
+        target = VARIANTS[key]
         probs = check_descriptor(self, build_id, out)
         try:
             d = Definition.parse(decode((out / "map/definition.csv").read_bytes()))
@@ -541,6 +745,10 @@ class Exp03(Experiment):
         except (OSError, KitError) as e:
             return probs + [f"cannot read output: {e}"]
         n = d.n
+        if target is None:                                 # div0: vanilla + 1..3 pieces of one province
+            target = n - 1
+            if not n0 < n <= n0 + max(TRAP_KS) - 1:
+                probs.append(f"{n - 1} provinces, expected vanilla + 1..{max(TRAP_KS) - 1}")
         if n - 1 != target:
             probs.append(f"{n - 1} provinces, expected {target}")
         van = np.asarray(v.pid)
@@ -558,6 +766,18 @@ class Exp03(Experiment):
         types = np.array([types_v[r] for r in root], dtype=np.int8)
         if (types[n0:] != LAND).any():
             probs.append("a new province is not a piece of a land province")
+        # strategic-region centre (P00b-f3): only the recorded / intended regions may divide by zero
+        region_of = region_lookup(v, n0)
+        unsafe = unsafe_of(pid, root, region_of)
+        if key == TRAP_VARIANT:
+            parents = sorted(set(root[n0:].tolist()))
+            want_unsafe = sorted({int(region_of[p]) for p in parents})
+            if len(parents) != 1:
+                probs.append(f"div0: new pieces come from {len(parents)} provinces, expected exactly one")
+        else:
+            want_unsafe = KNOWN_UNSAFE.get(key, [])
+        if unsafe != want_unsafe:
+            probs.append(f"regions whose centre divides by zero: {unsafe}, expected {want_unsafe}")
         # definition rows
         for i in range(1, n):
             r, pr = d.rows[i], vdef.rows[int(root[i])]
