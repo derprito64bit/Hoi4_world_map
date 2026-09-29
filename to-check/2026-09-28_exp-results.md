@@ -21,7 +21,9 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-03-div0 (vanilla + province 2166 cut in 3 → region 193 divisor 0) | — | predicted: crash `INT_DIVIDE_BY_ZERO` at hoi4.exe+0x15A4CDC before "Loaded N provinces" | — | pending |
 | EXP-02b strip-full / block-400 / block-800-sea / block-800-land | — | — | — | pending |
 | EXP-05-2to1 | 2026-09-29 08:17 | 4 screenshots (Chile, Alaska, Kamchatka, N Norway) in `to-check/screenshots/` | — | vanilla comparison pending |
-| EXP-08, EXP-09 | — | **withheld**: predicted region-centre crash; fix WU P00b-f4 | — | blocked |
+| EXP-08-5632x2560 | — | ready (P00b-f4). **Tests 2 things**: canvas size + seam-crossing sea province 13511 (vanilla has none) | — | pending: loads? if it crashes, exception.txt lines; error.log BOX/13511 lines |
+| EXP-08-6144x2560 | — | ready. KNOWN RISK region 178 (dy 0): a crash at hoi4.exe+0x15A4CDC = region-centre issue, elsewhere = canvas size | — | pending |
+| EXP-09a–e | — | ready (redesigned: 444 regions, 14 single-province regions = rival causes if it fails) | — | pending |
 | EXP-05-3to1, EXP-06, EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
