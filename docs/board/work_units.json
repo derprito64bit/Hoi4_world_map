@@ -81,10 +81,10 @@
       "depends_on": [
         "P00b-f1"
       ],
-      "status": "in_progress",
+      "status": "changes_requested",
       "branch": "wu/P00b-f2",
-      "attempts": 1,
-      "notes": "owner request 2026-09-28 after EXP-02-300/600/1200 all loaded"
+      "attempts": 2,
+      "notes": "owner request 2026-09-28 after EXP-02-300/600/1200 all loaded; r1 c67734f: tests 180+1skip, check 25/25, validate OK; review 0P0/1P1/5P2 (host-neighbour confound; split block-800) -> r2"
     },
     {
       "id": "P00b-f3",
