@@ -17,7 +17,12 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-03-20k (20,000 provinces + EXP-04: 19998 = 6 px, 19999 = 7 px, 20000 = 8 px) | 2026-09-28 22:34 | "same results as last time" (loads in seconds, smooth for 7 days) | game.log: **Loaded 20001 provinces**; defines → provinces 21 s; game launched; no crash dump. **EXP-04: no line in any log mentions 19998/19999/20000** (the define comment says sub-8-px provinces are logged; either the log line needs `-debug` or it isn't written in 1.19.3) | **Loads, smooth. 6/7-px provinces load silently** |
 | EXP-03-24k (24,000 provinces) | 2026-09-29 07:41 | "crashes while trying to get to the game menu" | `crashes/hoi4_20260929_074145`: **EXCEPTION_INT_DIVIDE_BY_ZERO** at `0x7FF6129C4CDC` (main thread); game.log stops after "4470 defines loaded", before "Loaded N provinces" → crash during map/province loading. error.log: only graphics-init lines. Active: EXP-03-24k + the 3 helper mods | **CRASH on load.** Not a ceiling: 30k loads. A 24k-specific build defect; checked and ruled out: gap-free IDs, no duplicate colours, no missing provinces, no 1-px-thin boxes, min area 10. Diagnosis WU P00b-f3 (queued after P00b-f2) |
 | EXP-03-30k (30,000 provinces) | 2026-09-29 | "runs fine, launches into menu, loaded smoothly, no issues on a 7-day run". Owner notes that the splits are concentrated in Africa (test artefact: largest-first splitting) | see log check below | **Loads, smooth** |
-| EXP-05 … EXP-07 | — | — | — | pending |
+| EXP-03-24k-fix (24k with the region-centre guard) | — | predicted: loads | — | pending |
+| EXP-03-div0 (vanilla + province 2166 cut in 3 → region 193 divisor 0) | — | predicted: crash `INT_DIVIDE_BY_ZERO` at hoi4.exe+0x15A4CDC before "Loaded N provinces" | — | pending |
+| EXP-02b strip-full / block-400 / block-800-sea / block-800-land | — | — | — | pending |
+| EXP-05-2to1 | 2026-09-29 08:17 | 4 screenshots (Chile, Alaska, Kamchatka, N Norway) in `to-check/screenshots/` | — | vanilla comparison pending |
+| EXP-08, EXP-09 | — | **withheld**: predicted region-centre crash; fix WU P00b-f4 | — | blocked |
+| EXP-05-3to1, EXP-06, EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
