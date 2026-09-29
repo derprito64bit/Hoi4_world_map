@@ -23,11 +23,15 @@ padded consistently, never stretched:
 Region-centre guard (P00b-f4, ``regioncentre.py``): no vanilla province gains or loses
 a pixel (the padding is new provinces only; with top padding alone, a 3x4-px new sea
 straddling the wrap seam above the old top edge avoids the seam X-crossing and has a
-region of its own), every vanilla region's centre calculation stays identical, and
-every new region's mean lies >= 1 px inside a member box (``regiongroup.grow_regions``).
-Known risk: at 6144 px the vanilla wrap regions no longer reach the right edge W-1;
-region 178 (fallback, dy 0 in vanilla, where it wraps) then fails the guard, and no
-padding layout can change that (its members and boxes are vanilla's). Overwatch
+region of its own), every vanilla region keeps its members, boxes, mean, rect and
+divisors (the wrap status is NOT compared: see below), and every new region's mean lies
+>= 1 px inside a member box (``regiongroup.grow_regions``).
+Wrap status at 6144 px: no vanilla wrapping region reaches the right edge W-1 any more.
+For 112 that does not matter (its mean lies inside a member box), but the six that take
+the fallback (88, 95, 96, 97, 178, 180) leave the engine's wrap path that vanilla was seen
+loading with. The model rates five of them safe on the plain rect
+(closest: 88 at dy 1) and one a known risk: region 178 (fallback, dy 0) fails the guard,
+and no padding layout can change that (its members and boxes are vanilla's). Overwatch
 accepted it for the owner run (P00b-f4 r2): ``KNOWN_RISK`` allows exactly that region
 with exactly its vanilla member-box signature in EXP-08-6144x2560, and the README tells
 the owner what to send back if the game crashes.
@@ -77,9 +81,10 @@ CRASH_RVA = 0x15A4CDC                # hoi4.exe 1.19.3 region-centre idiv (EXP-0
 KNOWN_RISK = {
     "EXP-08-6144x2560": {
         178: ("cbe28192ad55b4ec",
-              "vanilla West Polynesia wraps the seam in vanilla (fallback, dy 0, loads); at 6144 px it no longer "
-              "touches the right edge, and its members and boxes are vanilla's, so no padding layout can change "
-              "it. The observed crash divisor is dx (here -748); dy 0 is flagged only conservatively. The owner "
+              "vanilla West Polynesia wraps the seam in vanilla (fallback, dy 0, loads); at 6144 px it and the five "
+              "other vanilla wrapping regions (88, 95, 96, 97, 180; rated safe, closest 88 at dy 1) no longer touch "
+              "the right edge, and its members and boxes are vanilla's, so no padding layout can change it. The "
+              "observed crash divisor is dx (here -748); dy 0 is flagged only conservatively. The owner "
               "run decides it: a crash at hoi4.exe+0x15A4CDC means the dy division is real, a crash elsewhere "
               "points at the canvas size (or another cause), loading means dy 0 on the fallback is harmless."),
     },
@@ -202,14 +207,18 @@ def vanilla_centres(v) -> dict:
 
 
 def _centre_path(c) -> tuple:
+    # the wrap status (c.seam) is deliberately not compared: it follows the canvas width (six vanilla regions
+    # stop wrapping at 6144 px); guard_failures judges each region under its new status
     return (c.n, c.mean, c.rect, c.fallback, c.fallback_strict, c.fallback_all, c.dx, c.dy, c.margin, c.signature)
 
 
 def centre_problems(v, pid: np.ndarray, new_texts: dict, known: dict | None = None,
                     notes: list | None = None) -> list:
     """Region-centre guard for a padded map: 0 guard failures (vanilla twins count for wrapping regions),
-    every vanilla region's centre calculation identical to vanilla's, every new region's mean >= 1 px
-    inside a member box. ``known``: this build's KNOWN_RISK entries (their notes go to ``notes``)."""
+    every vanilla region's members, boxes, mean, rect and divisors identical to vanilla's (its wrap status
+    may change with the canvas width: at 6144 px six wrapping regions stop wrapping; the guard judges them),
+    every new region's mean >= 1 px inside a member box. ``known``: this build's KNOWN_RISK entries (their
+    notes go to ``notes``)."""
     try:
         regions, new_ids = layered_regions(v, new_texts)
         cs = region_centres(pid, regions)
@@ -382,7 +391,10 @@ class Exp08(Experiment):
                 badd.append(f"{sid};{t};{fmt2(x)};9.50;{fmt2(z)};0.00;{extra}")
         files["map/buildings.txt"] = encode(join_lines(bl + badd, btr))
         return {"files": files, "new": k, "newly_coastal": newly, "regions": len(groups), "top": top,
-                "right": right, "seam_patch": seam_straddlers(pid, range(n0, n))}
+                "right": right, "seam_patch": seam_straddlers(pid, range(n0, n)),
+                # vanilla wrapping regions on the fallback path (88, 95, 96, 97, 178, 180): with right padding none
+                # of them reaches the new edge W-1 any more (112 wraps too, but its mean lies inside a member box)
+                "wrap_lost": sorted(r for r, c in vanilla_centres(v).items() if c.unknown) if right else []}
 
     def region_groups(self, pid, n0, n, types, v):
         """Pad provinces grouped into compact regions of <= REGION_MAX whose mean lies >= 1 px inside a member
@@ -422,11 +434,25 @@ class Exp08(Experiment):
         w, h = VARIANTS[build_id.split("-")[-1]]
         added = f"{info['top']} rows of open ocean at the top" + (
             f" and {info['right']} columns at the right" if info["right"] else "")
+        patch = ", ".join(map(str, info.get("seam_patch") or []))
+        canvas_ = (f"The map canvas is {w}x{h} pixels ({w * h / 1e6:.1f} million; vanilla 5632x2048 = 11.5 million, "
+                   f"the community ceiling is 13.24 million). The normal world is unchanged; {added} are added, split "
+                   f"into {info['new']} new sea provinces. Every map layer is padded to match (nothing is stretched).")
+        crash = ["If the game crashes: open the newest folder in Documents/Paradox Interactive/Hearts of Iron IV/"
+                 "crashes/ and copy two lines from exception.txt: the line that starts with 'Unhandled Exception' "
+                 "and the first line of the stack below it (overwatch can also read the folder directly).",
+                 "If it crashes: does Documents/Paradox Interactive/Hearts of Iron IV/logs/game.log contain a line "
+                 "'Loaded N provinces' (yes/no; copy it if yes)?"]
+        if patch:
+            crash.append(f"Every error.log line that contains 'BOX' or '{patch}' (say 'none' if there is none).")
+        wraps = ", ".join(map(str, info.get("wrap_lost") or []))
         return texts.readme(
             build_id, self.title_for(build_id),
-            prop=f"The map canvas is {w}x{h} pixels ({w * h / 1e6:.1f} million; vanilla 5632x2048 = 11.5 million, "
-                 f"the community ceiling is 13.24 million). The normal world is unchanged; {added} are added, split "
-                 f"into {info['new']} new sea provinces. Every map layer is padded to match (nothing is stretched).",
+            heading=("THE TWO THINGS THIS TEST CHANGES (compared with the normal game)" if patch else
+                     "THE ONE THING THIS TEST CHANGES (compared with the normal game)"),
+            prop=(f"1. {canvas_}\n2. Sea province {patch} is the first province in any of our tests that crosses the "
+                  "left/right map edge (the wrap seam); the normal game has none. Provinces that span the seam are a "
+                  "known failure mode ('TOO LARGE BOX'). It is needed here: see GOOD TO KNOW." if patch else canvas_),
             why="Tells us whether the engine accepts a map bigger than anything published (DEC-020: a bigger canvas "
                 "is allowed only if this loads), and whether textures or fog of war get misaligned on a new size.",
             launch=texts.LAUNCH_NORMAL,
@@ -439,12 +465,7 @@ class Exp08(Experiment):
                    "Unpause and let a few days pass."],
             send=["Loaded: yes / no; loading time (seconds).",
                   "Screenshots of the edges; describe anything misaligned or stretched.",
-                  "Did the game run normally for a few days (yes/no)?"]
-            + (["If the game crashes: open the newest folder in Documents/Paradox Interactive/Hearts of Iron IV/"
-                "crashes/ and copy two lines from exception.txt: the line that starts with 'Unhandled Exception' "
-                "and the first line of the stack below it (overwatch can also read the folder directly).",
-                "If it crashes: does Documents/Paradox Interactive/Hearts of Iron IV/logs/game.log contain a line "
-                "'Loaded N provinces' (yes/no; copy it if yes)?"] if KNOWN_RISK.get(build_id) else []),
+                  "Did the game run normally for a few days (yes/no)?"] + crash,
             expected=self.expected(build_id).text, cannot=["EXP-08"], user_dir=ctx.user,
             notes=["Fog-of-war texture: the full-size level keeps the normal game's data exactly, but its smaller "
                    "zoom levels are recomputed by the kit for the whole map. Slight blockiness of fog/water shine at "
@@ -453,16 +474,20 @@ class Exp08(Experiment):
                    "(the engine supplies MAP_SIZE_X/Y).",
                    f"{len(info['newly_coastal'])} Arctic land provinces on the old top edge now touch the new ocean "
                    "and became coastal; they got port/coastal positions like every other coast."]
-            + ([f"Sea province {', '.join(map(str, info['seam_patch']))} is a tiny new sea (3 rows x 4 columns) "
+            + ([f"Sea province {patch} is a tiny new sea (3 rows x 4 columns) "
                 "that crosses the left/right map edge just above the old top edge: two different vanilla seas meet "
                 "there at the edge, and without it four provinces would meet at one corner (not allowed), or a "
                 "vanilla sea would have to grow into the new ocean (that would move its strategic region's centre, "
                 "the EXP-03-24k crash mechanism). It has a strategic region of its own. A 'TOO LARGE BOX' or "
                 "similar line for this province in error.log would come from it crossing the edge, not from the "
-                "canvas size: report it."] if info.get("seam_patch") else [])
-            + ([f"Known risk in this build: the Pacific strategic region {', '.join(map(str, KNOWN_RISK[build_id]))} "
-                "(West Polynesia) used to wrap around the left/right map edge; with the extra columns at the right "
-                "it no longer does, and the game may then divide by zero while computing that region's centre. A "
+                f"canvas size: report it. If the game crashes, the crash may come from province {patch} rather "
+                "than from the map size; the crash lines asked for above help tell the two apart."] if patch else [])
+            + ([f"Known risk in this build: the Pacific strategic regions {wraps} used to wrap around the "
+                "left/right map edge (the game may compute a wrapping region's centre differently); with the extra "
+                "columns at the right none of them wraps any more. The kit's offline check rates "
+                f"{len(info.get('wrap_lost') or []) - len(KNOWN_RISK[build_id])} of them safe and one, region "
+                f"{', '.join(map(str, KNOWN_RISK[build_id]))} (West Polynesia), a known risk: the game may divide "
+                "by zero while computing that region's centre. A "
                 f"crash at hoi4.exe+0x{CRASH_RVA:X} (that address appears in the exception line) is this "
                 "region-centre problem, NOT the map size. A crash at any other address points at the map size or "
                 "something else. If it loads, this risk is harmless. Every outcome is useful: just send the lines "

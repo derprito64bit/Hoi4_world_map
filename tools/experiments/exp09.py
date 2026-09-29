@@ -291,8 +291,12 @@ class Exp09(Experiment):
                 run = []
         files["map/railways.txt"] = encode("\n".join(rails) + "\n")
         self._base = files
+        new_sizes = [len(ids) for _, ids in lay.sea_regions + lay.off_regions]
+        vanilla_regions = len(v.region_files)              # incl. vanilla's regions without provinces
         self.layout_info = {"sea_new": len(lay.sea_new), "off": len(lay.off_ids), "provinces": n - 1,
-                            "anchors": lay.anchors, "off_ids": (lay.off_ids[0], lay.off_ids[-1])}
+                            "anchors": lay.anchors, "off_ids": (lay.off_ids[0], lay.off_ids[-1]),
+                            "regions": vanilla_regions + len(new_sizes), "regions_vanilla": vanilla_regions,
+                            "regions_single": sum(k == 1 for k in new_sizes)}
         return files
 
     def weather_sources(self, v) -> dict:
@@ -527,6 +531,11 @@ class Exp09(Experiment):
                   "shader errors).",
                   "Did hover/click near the curved edge pick the right province (yes/no)?"],
             expected=self.expected(build_id).text, cannot=["EXP-09"], user_dir=ctx.user,
+            cannot_extra=[f"This build has {info['regions']} strategic regions (the normal game: "
+                          f"{info['regions_vanilla']}), and {info['regions_single']} of them hold a single province "
+                          "(the normal game's smallest has 3); no map with that many regions has been seen loading. "
+                          "If the game fails to load or crashes, those are rival causes to the edge look, so a "
+                          "failure does not by itself say anything about the camera or shader variants."],
             notes=["This map is synthetic, made only for this look test: every province, state and country of "
                    "the normal game still exists (so the game loads and plays), but every province is drawn as a "
                    "small bar in rows in the middle of the map, surrounded by new ocean: each strategic region is "

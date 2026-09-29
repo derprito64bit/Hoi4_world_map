@@ -118,6 +118,36 @@ def exp09_builds(ctx, tmp_path_factory):
     return e, outs
 
 
+# landmark state -> (cols, rows) of its bars in the pre-f4 EXP-09 builds (2026-09-28): the doubled middle bar
+# of P00b-f4 must never move a landmark
+LANDMARK_BOXES = {822: ((4323, 4346), (148, 167)), 463: ((764, 853), (153, 172)),
+                  101: ((2162, 2191), (19, 38)), 953: ((1680, 1697), (2226, 2245))}
+
+
+def test_exp09_landmarks_keep_their_pre_f4_pixels(ctx, exp09_builds):
+    import numpy as np
+    from experiments.exp09 import ANCHORS
+    e, outs = exp09_builds
+    pid, _ = _pid_of(list(outs.values())[0])
+    states = {}
+    for p, (sid, _) in ctx.vanilla.province_state.items():
+        states.setdefault(sid, []).append(p)
+    assert set(LANDMARK_BOXES) == {a[0] for a in ANCHORS}
+    for sid, ((c0, c1), (r0, r1)) in LANDMARK_BOXES.items():
+        ys, xs = np.nonzero(np.isin(pid, states[sid]))
+        assert (xs.min(), xs.max(), ys.min(), ys.max()) == (c0, c1, r0, r1), sid
+        assert len(xs) == (c1 - c0 + 1) * (r1 - r0 + 1), sid        # one solid run, no gap, no doubled bar outside
+
+
+def test_exp09_readme_names_the_region_count_as_a_rival_cause(ctx, exp09_builds):
+    e, outs = exp09_builds
+    info = e.layout_info
+    text = (list(outs.values())[0] / "README.txt").read_text(encoding="utf-8")
+    cannot = text.split("WHAT THIS TEST CANNOT PROVE", 1)[1]
+    assert f"{info['regions']} strategic regions (the normal game: {info['regions_vanilla']})" in cannot
+    assert f"{info['regions_single']} of them hold a single province" in cannot and "rival causes" in cannot
+
+
 def test_exp09_fresh_builds_pass_and_share_the_base(ctx, exp09_builds):
     e, outs = exp09_builds
     for bid, out in outs.items():

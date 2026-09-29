@@ -265,12 +265,19 @@ def test_exp08_known_risk_is_only_region_178_in_6144():
     assert set(KNOWN_RISK) == {"EXP-08-6144x2560"} and set(KNOWN_RISK["EXP-08-6144x2560"]) == {178}
 
 
-def test_exp08_6144_readme_asks_for_the_crash_lines():
+def test_exp08_readmes_ask_for_the_crash_lines():
+    """r3: both EXP-08 READMEs ask for the crash lines; 5632 names its second property (seam province 13511)."""
     from experiments.exp08 import Exp08
-    info = {"top": 512, "right": 512, "new": 148, "newly_coastal": [], "seam_patch": []}
+    info = {"top": 512, "right": 512, "new": 148, "newly_coastal": [], "seam_patch": [],
+            "wrap_lost": [88, 95, 96, 97, 178, 180]}
     ctx = SimpleNamespace(user=None)
     r = Exp08().readme(ctx, "EXP-08-6144x2560", info)
-    assert "Unhandled Exception" in r and "exception.txt" in r and "Loaded N provinces" in r
-    assert "+0x15A4CDC" in r and "NOT the map size" in r
-    r2 = Exp08().readme(ctx, "EXP-08-5632x2560", dict(info, right=0, seam_patch=[13511]))
-    assert "Unhandled Exception" not in r2 and "13511" in r2
+    r2 = Exp08().readme(ctx, "EXP-08-5632x2560", dict(info, right=0, seam_patch=[13511], wrap_lost=[]))
+    for text in (r, r2):
+        assert "Unhandled Exception" in text and "exception.txt" in text and "crashes/" in text
+        assert "Loaded N provinces" in text
+    assert "+0x15A4CDC" in r and "NOT the map size" in r and "88, 95, 96, 97, 178, 180" in r
+    assert "THE ONE THING" in r and "13511" not in r
+    assert "THE TWO THINGS" in r2 and "1. The map canvas" in r2 and "2. Sea province 13511" in r2
+    assert "TOO LARGE BOX" in r2 and "'BOX' or '13511'" in r2
+    assert "may come from province 13511 rather than from the map size" in r2
