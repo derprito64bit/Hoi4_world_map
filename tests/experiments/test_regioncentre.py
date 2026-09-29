@@ -87,6 +87,19 @@ def test_box_edge_ambiguity_counts_as_fallback(s):
     assert c.fallback and c.fallback_all == (s > 2) and c.gap == s
 
 
+@pytest.mark.parametrize("edge", ["left", "bottom"])
+def test_mean_on_a_lower_box_edge_counts_as_fallback_for_dx(edge):
+    """Strip layouts: the mean sits on the shared edge of two boxes; a strict lower bound misses both."""
+    # box 1 x 0..9, box 2 x 10..19 (centres 5 and 15 -> mean x 10 = box 2's xmin); both y 0..9 (mean y 5)
+    boxes = [np.array(a, dtype=np.int64) for a in ([0, 0, 10], [-1, 9, 19], [0, 0, 0], [-1, 9, 9])]
+    if edge == "bottom":            # the same, rotated: boxes stacked in y, mean y on box 2's ymin
+        boxes = [boxes[2], boxes[3], boxes[0], boxes[1]]
+    c = region_centre(9, [1, 2], tuple(boxes), 100)
+    assert c.fallback_strict and not c.fallback            # inside only with an inclusive lower bound
+    assert c.divisor == c.dx
+    assert c.unsafe == (c.dx == 0)
+
+
 def test_member_without_pixels_is_an_error():
     pid, _, _ = ring_world()
     with pytest.raises(KitError):
@@ -122,14 +135,14 @@ def test_guard_accepts_unknown_only_with_an_identical_observed_twin():
 
 
 def test_trap_split_makes_exactly_that_region_unsafe():
-    from experiments.exp03 import trap_split, unsafe_of
+    from experiments.exp03 import trap_split, guard_failures_of
     pid, d, region_of = ring_world()
     types = d.types()
-    assert unsafe_of(pid, np.arange(d.n), region_of) == []
+    assert guard_failures_of(pid, np.arange(d.n), region_of) == []
     out, root, (rid, p, k) = trap_split(pid, types, region_of, {}, set(), set())
     assert rid == 2 and region_of[p] == 2 and len(root) == d.n + k - 1
     assert set(root[d.n:].tolist()) == {p}
-    assert unsafe_of(out, root, region_of) == [2]
+    assert guard_failures_of(out, root, region_of) == [2]
     c = region_centres(out, {2: [i for i in range(len(root)) if region_of[root[i]] == 2]})[2]
     assert c.dx == 0 and c.fallback_all
 
@@ -141,26 +154,27 @@ def test_trap_respects_frozen_provinces():
 
 
 def _first_unsafe_extra(pid, types, region_of):
-    from experiments.exp03 import subdivide, unsafe_of
+    from experiments.exp03 import subdivide, guard_failures_of
     n0 = len(types)
     for extra in range(1, 40):
         p2, r2 = subdivide(pid, types, extra, np.arange(n0), {}, set(), frozen=set())
-        if unsafe_of(p2, r2, region_of):
+        if guard_failures_of(p2, r2, region_of):
             return extra, p2, r2
     raise AssertionError("no unguarded plan hits the division in the ring world")
 
 
 def test_guarded_subdivide_avoids_the_division_and_keeps_the_count():
-    from experiments.exp03 import guarded_subdivide, unsafe_of
+    from experiments.exp03 import guarded_subdivide, guard_failures_of
     pid, d, region_of = ring_world()
     types = d.types()
     n0 = d.n
     extra, plain_pid, plain_root = _first_unsafe_extra(pid, types, region_of)
-    assert unsafe_of(plain_pid, plain_root, region_of) == [2]            # the unguarded plan hits it
+    bad = guard_failures_of(plain_pid, plain_root, region_of)
+    assert bad                                                             # the unguarded plan hits it
     out, root, guard, moved = guarded_subdivide(pid, types, extra, {}, set(), set(), region_of)
     assert len(root) == n0 + extra
-    assert unsafe_of(out, root, region_of) == []
-    assert guard and all(r == 2 and region_of[p] == 2 for r, p in guard)
+    assert guard_failures_of(out, root, region_of) == []
+    assert guard and guard[0][0] in bad and all(region_of[p] == r for r, p in guard)
     assert not (root[n0:] == guard[0][1]).any()                           # the frozen parent stays whole
     kids, plain = np.bincount(root[n0:], minlength=n0), np.bincount(plain_root[n0:], minlength=n0)
     assert moved and moved == [int(p) for p in np.nonzero(kids > plain)[0]]
@@ -209,6 +223,81 @@ def test_pixel_membership_gate_would_wrongly_crash_vanilla_region_207(vanilla_ce
     wrong = [r for r in VANILLA_DX0_INSIDE
              if int(pid[H - 1 - cs[r].mean[1], cs[r].mean[0]]) not in set(members[r])]
     assert wrong == [207]
+
+
+def test_vanilla_region_1_rules_out_strict_lower_bound_plus_dy_division(vanilla_centres_):
+    """Region 1: dx 10, dy 0, mean on a box's lower edge. Vanilla loads, so the dy test keeps the inclusive bound."""
+    _, cs, _ = vanilla_centres_
+    c = cs[1]
+    assert (c.dx, c.dy) == (10, 0) and c.fallback_strict and not c.fallback and not c.unsafe
+
+
+def test_observed_loading_pins_exact_bytes(tmp_path):
+    from experiments.exp03 import OBSERVED_LOADING, mod_tree_sha256
+    (tmp_path / "map").mkdir()
+    (tmp_path / "map" / "a.txt").write_bytes(b"1")
+    (tmp_path / "README.txt").write_text("user dir A")
+    h = mod_tree_sha256(tmp_path)
+    (tmp_path / "README.txt").write_text("user dir B")          # README holds machine paths: ignored
+    assert mod_tree_sha256(tmp_path) == h
+    (tmp_path / "map" / "a.txt").write_bytes(b"2")
+    assert mod_tree_sha256(tmp_path) != h
+    assert set(OBSERVED_LOADING) == {"16k", "20k", "30k"} and all(len(v) == 64 for v in OBSERVED_LOADING.values())
+
+
+# ---------------------------------------------------------------- diag03 (report / main)
+def test_diag03_report_vanilla_is_clean_and_tags_its_seam_regions(ctx, capsys):
+    from experiments import diag03
+    fails, cs = diag03.report("vanilla", None, ctx.game)
+    out = capsys.readouterr().out
+    assert fails == [] and len(cs) == 304
+    assert "unsafe 0," in out and "unknown (wrapping + fallback) 6;" in out
+    tagged = [ln for ln in out.splitlines() if "identical in vanilla, observed loading" in ln]
+    assert [int(ln.split()[2]) for ln in tagged] == VANILLA_UNKNOWN
+    assert "NEW" not in out and "UNSAFE" not in out
+
+
+def test_diag03_main_exit_codes_and_build_root(ctx, tmp_path, capsys):
+    """Exit 0 for vanilla alone; exit 1 and region 191 for EXP-03-24k found under --build-root."""
+    from experiments import diag03
+    from experiments.build import build_into
+    from experiments.registry import resolve
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert diag03.main(["--build-root", str(empty)]) == 0
+    capsys.readouterr()
+    (exp, bid), = resolve(ctx, "EXP-03-24k")
+    out = tmp_path / "builds" / bid
+    out.mkdir(parents=True)
+    build_into(ctx, exp, bid, out)
+    assert diag03.main(["--build-root", str(tmp_path / "builds"), bid]) == 1
+    text = capsys.readouterr().out
+    assert "UNSAFE region 191 191-Northern Norway.txt: dx = 0" in text
+    assert text.count("identical in vanilla, observed loading") == 2 * len(VANILLA_UNKNOWN)   # vanilla + 24k
+    assert "NEW" not in text
+    fails, _ = diag03.report(bid, out, ctx.game, diag03.report("vanilla", None, ctx.game)[1])
+    assert fails == [191]
+
+
+def test_diag03_tags_a_changed_seam_region_as_new(ctx, vanilla_centres_, tmp_path, capsys):
+    """A wrapping region with one member dropped is still unknown but no longer matches vanilla: NEW, exit 1."""
+    from experiments import diag03
+    from experiments.mapdata import block_ids, find_block
+    pid, _, members = vanilla_centres_
+    v = ctx.vanilla
+    fname = next(f for f in sorted(v.region_files) if f.startswith("88-"))
+    ids = members[88]
+    drop = next(m for m in ids if region_centres(pid, {88: [i for i in ids if i != m]})[88].unknown)
+    text = v.region_files[fname]
+    o, c = find_block(text, "provinces", 1)
+    kept = [i for i in block_ids(text, "provinces", 1) if i != drop]
+    new = text[:o + 1] + " " + " ".join(str(i) for i in kept) + " " + text[c:]
+    d = tmp_path / "X" / "map" / "strategicregions"
+    d.mkdir(parents=True)
+    (d / fname).write_text(new, encoding="utf-8")
+    assert diag03.main(["--build-root", str(tmp_path), "X"]) == 1
+    out = capsys.readouterr().out
+    assert "unknown region 88 88-Bering Sea.txt: wraps the seam" in out and "-> NEW" in out
 
 
 def test_model_reproduces_the_crash_dump_numbers(ctx):

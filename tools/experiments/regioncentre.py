@@ -27,17 +27,30 @@ INFERRED (only a fit to the dump numbers)
     (B) w = span + 2, centre x0 + (w - 1)/2, rect = plain union.
     Both give the same centre and rect (region 191 in 24k: xmax - xmin = 300, i.e.
     301 columns, rect width 302), but the upper bound of the inside test is xmax + 1
-    in (A) and xmax + 2 in (B). With an exclusive compare it could be xmax.
+    in (A) and xmax + 2 in (B).
+  * The compare direction. The disassembly reads ``jl`` / ``jg`` (inclusive at both ends),
+    but that reading is the only source: nothing observed decides whether the bounds are
+    ``<=`` or ``<``. So each end may be exclusive: the lower bound xmin + 1, the upper xmax.
 
 What the model does, conservatively:
-  * ``fallback`` is True when ANY convention misses: M must lie inside a member's pixel
-    bbox (xmin..xmax, ymin..ymax) to count as inside. The ambiguity can only add false
-    positives.
-  * ``unsafe``: fallback and (dx == 0 or dy == 0). dx == 0 is the observed crash; dy == 0
-    is flagged because the next routine was not read.
-  * ``unknown``: fallback in a region whose members cover column 0 AND column W-1 (it
-    wraps). The model does not cover these. Guards treat them as unsafe unless the
-    identical region (same member boxes) was observed loading, e.g. in vanilla.
+  * ``fallback_strict`` (used for the dx test): M counts as inside only when
+    xmin < M.x <= xmax and ymin < M.y <= ymax, i.e. inside under EVERY convention (the
+    intersection). Means on a member's left or bottom edge count as outside. This matters
+    for strip or grid layouts, where the mean sits exactly on the shared edge of two boxes
+    (EXP-09a: ~140 regions).
+  * ``fallback`` (used for the dy test): the inclusive lower bound, xmin <= M <= xmax.
+    The dy test cannot use the strict lower bound: vanilla region 1 has dx 10, dy 0 and its
+    mean lies on a box's lower edge, so "strict lower bound" and "the engine divides by dy"
+    cannot both be true, and vanilla loads. dy == 0 is only flagged because the next
+    routine was not read; dx == 0 is the observed crash, so it gets the stricter test.
+  * ``fallback_all``: outside every member box even with the widest convention.
+  * ``unsafe``: not wrapping and ((fallback_strict and dx == 0) or (fallback and dy == 0)).
+  * ``unknown``: fallback_strict in a region whose members cover column 0 AND column W-1
+    (it wraps). The model does not cover these.
+  * Guards (``guard_failures``) reject unsafe regions and unknown regions without an
+    identical twin in a map observed loading. For new geometry pass ``observed = {}``:
+    then every wrapping region that takes the fallback fails. ``unsafe_regions`` alone
+    never returns an unknown region and is not a guard.
 
 Supporting observations (vanilla 1.19.3 loads):
   * 13 vanilla regions have dx == 0 with M inside a member box, so the gate before the
@@ -51,8 +64,10 @@ Supporting observations (vanilla 1.19.3 loads):
     -10 / -10 / -11 / 0 / +2 in vanilla / 16k / 20k / 24k / 30k.
 
 Rules for the real map (P05 and the region builder):
-  * no region may be unsafe, and no new region may be unknown; re-check after every
-    change to provinces or membership;
+  * ``guard_failures(region_centres(pid, regions), observed)`` must be empty (``observed``
+    = {} for new geometry); re-check after every change to provinces or membership;
+  * keep region means off member box edges (margin >= 1 px), so the compare direction
+    never decides;
   * prefer regions whose mean point falls inside a member box (the fallback never runs);
     ring-, C- and strip-shaped regions are the ones that take the fallback;
   * symmetric or regular layouts (grid or strip filler, mirrored regions) put the mean
@@ -77,25 +92,26 @@ class RegionCentre:
     n: int
     mean: tuple            # (x, y) engine coordinates, y from the bottom
     rect: tuple            # (x0, y0, w, h) of the region rectangle
-    fallback: bool         # mean outside every member's pixel bbox (some convention takes the fallback)
+    fallback: bool         # mean outside every member's box xmin <= M <= xmax (dy test)
     fallback_all: bool     # mean outside every member box even with the widest convention
     dx: int                # mean.x - rect centre x (the observed divisor)
     dy: int                # mean.y - rect centre y (flagged conservatively)
     gap: int               # Chebyshev distance of the mean to the nearest member pixel bbox (0 = inside)
     seam: bool             # members cover column 0 and column W-1 (the region wraps)
-    signature: str         # hash of the sorted member boxes: identical signature = identical engine input
+    signature: str         # hash of the sorted member boxes: identical member boxes on the same canvas width
+    fallback_strict: bool = False   # mean outside every box xmin < M <= xmax (dx test; intersection)
 
     @property
     def divisor(self):
-        return self.dx if self.fallback else None
+        return self.dx if self.fallback_strict else None
 
     @property
     def unsafe(self) -> bool:
-        return self.fallback and not self.seam and (self.dx == 0 or self.dy == 0)
+        return not self.seam and ((self.fallback_strict and self.dx == 0) or (self.fallback and self.dy == 0))
 
     @property
     def unknown(self) -> bool:
-        return self.fallback and self.seam
+        return self.fallback_strict and self.seam
 
 
 def pixel_boxes(pid: np.ndarray, n: int):
@@ -136,6 +152,7 @@ def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
     mx = _trunc_div(int(cx.sum()), len(ids))
     my = _trunc_div(int(cy.sum()), len(ids))
     inside = {s: bool(((x0 <= mx) & (mx <= x1 + s) & (y0 <= my) & (my <= y1 + s)).any()) for s in INSIDE_SLACK}
+    inside_strict = bool(((x0 < mx) & (mx <= x1) & (y0 < my) & (my <= y1)).any())
     rx0, ry0 = int(x0.min()), int(y0.min())
     rw = int(x1.max()) - rx0 + 2
     rh = int(y1.max()) - ry0 + 2
@@ -145,7 +162,8 @@ def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
     seam = bool((x0 == 0).any() and (x1 == W - 1).any())
     sig = hashlib.sha256(np.stack([x0, x1, y0, y1], 1).astype("<i8").tobytes()).hexdigest()[:16]
     return RegionCentre(rid, len(ids), (mx, my), (rx0, ry0, rw, rh), not inside[min(INSIDE_SLACK)],
-                        not inside[max(INSIDE_SLACK)], mx - (rx0 + rw // 2), my - (ry0 + rh // 2), gap, seam, sig)
+                        not inside[max(INSIDE_SLACK)], mx - (rx0 + rw // 2), my - (ry0 + rh // 2), gap, seam, sig,
+                        not inside_strict)
 
 
 def region_centres(pid: np.ndarray, regions: dict) -> dict:

@@ -39,7 +39,9 @@ bisect variants were added:
 """
 from __future__ import annotations
 
+import hashlib
 import heapq
+import json
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -49,7 +51,7 @@ from scipy import ndimage
 from . import texts
 from .base import Expected, Experiment, check_descriptor, check_file_set
 from .bmpio import read_bmp, write_bmp
-from .common import KitError, decode, encode, fmt2, write_bytes
+from .common import KitError, decode, encode, fmt2, sha256_tree, write_bytes
 from .mapdata import (LAND, SEA, Definition, adjacency_ids, adjacency_links, adjacency_pairs, append_ids, areas, coast_points, coastal_flags,
                       fix_x_crossings, game_xz, height_at, interior_points, new_colors, pid_from_rgb, rgb_from_pid,
                       x_crossings)
@@ -65,9 +67,12 @@ VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None}
 # 24k-fix / div0 bisect: if div0 crashes and 24k-fix loads, keep it as the confirmed reproducer; otherwise
 # the model is incomplete and this entry (and regioncentre.py) must be corrected first.
 KNOWN_UNSAFE = {"24k": [191]}
-# Builds seen loading in game: region-centre findings there are evidence, never a --check failure
-# (none of them has one under the conservative model as of P00b-f3 r2).
-OBSERVED_LOADING = {"16k", "20k", "30k"}
+# Builds seen loading in game (2026-09-28/29), pinned by mod_tree_sha256() of the bytes that were run:
+# region-centre findings there are evidence, never a --check failure. None of them has one under the
+# conservative model (P00b-f3 r3). A rebuild with different bytes gets no exemption.
+OBSERVED_LOADING = {"16k": "6aa7b5b0347f1e84827eb99f6184900c86ee920549fdbeec75a8e0e824e33691",
+                    "20k": "f6a0806fb8caf30b1440ce6f9171fc30e4527aba3e2564d1ab176a3e06c499a6",
+                    "30k": "d0d39a8b4683babb70de75e8c457d1564f98c5cf78494be4f9285c13a88b2785"}
 CRASH_RVA = 0x15A4CDC                   # hoi4.exe 1.19.3.0.c01a, strategicregiontemplate.cpp region centre
 TRAP_KS = (2, 3, 4)
 MIN_CHILD = 40          # px; well above the 8-px engine floor and near vanilla's p5 (68)
@@ -309,11 +314,17 @@ def region_lookup(v, n0: int) -> np.ndarray:
     return out
 
 
+def mod_tree_sha256(out: Path) -> str:
+    """sha256 over {path: sha256} of a build folder, README.txt excluded (it holds the machine's user dir)."""
+    files = {rel: h for rel, h in sha256_tree(out).items() if rel != "README.txt"}
+    return hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
+
+
 def centres_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray) -> dict:
     return region_centres(pid, region_members(root, region_of))
 
 
-def unsafe_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray, observed: dict | None = None) -> list:
+def guard_failures_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray, observed: dict | None = None) -> list:
     """Guard failures: conservatively unsafe regions, plus wrapping (unknown) regions that take the
     fallback and have no identical twin in ``observed`` (centres of a map seen loading, e.g. vanilla)."""
     return guard_failures(centres_of(pid, root, region_of), observed)
@@ -341,7 +352,7 @@ def guarded_subdivide(van_pid, types, extra, keep_pixel, coastal_needed, frozen,
         kids = np.bincount(root[n0:], minlength=n0)
         if first is None:
             first = kids
-        bad = unsafe_of(pid, root, region_of, observed)
+        bad = guard_failures_of(pid, root, region_of, observed)
         if not bad:
             return pid, root, guard, [int(p) for p in np.nonzero(kids > first)[0]]
         for rid in bad:
@@ -803,7 +814,8 @@ class Exp03(Experiment):
                 probs.append(f"div0: region {want_fails} is not the observed dx == 0 case under every convention")
         else:
             want_fails = KNOWN_UNSAFE.get(key, [])
-        if fails != want_fails and key not in OBSERVED_LOADING:
+        seen_loading = OBSERVED_LOADING.get(key) == mod_tree_sha256(out)     # these exact bytes loaded in game
+        if fails != want_fails and not seen_loading:
             probs.append(f"regions failing the region-centre guard: {fails}, expected {want_fails}")
         # definition rows
         for i in range(1, n):
