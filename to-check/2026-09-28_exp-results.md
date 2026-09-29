@@ -14,7 +14,8 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-02-1200 (land 2972 + sea 8337, 1200 px wide) | 2026-09-28 22:28 | "same result as last time" (menu, game runs, loads in a couple of seconds) | `system.log`: EXP-02-1200 active; `error.log`: 0 lines with BOX/2972/8337; game launched; no new crash dump | **Loads** (1200 px) |
 | EXP-02b (larger: full-width strip, solid blocks) | — | owner asked for larger tests; WU P00b-f2 | — | building |
 | EXP-03-16k (16,000 provinces) | 2026-09-28 22:31 | "loaded, a couple of seconds into the scenario, runs very smooth as if it's still vanilla"; PC: 32 GB DDR4-3600, RX 6700 XT, Ryzen 5 5600X | game.log: **Loaded 16001 provinces**; defines → provinces 21 s (vanilla runs today: 20 s); game launched; error.log only the 5 usual non-mod lines; no new crash dump | **Loads, smooth** |
-| EXP-03-20k … EXP-07 | — | — | — | pending |
+| EXP-03-20k (20,000 provinces + EXP-04: 19998 = 6 px, 19999 = 7 px, 20000 = 8 px) | 2026-09-28 22:34 | "same results as last time" (loads in seconds, smooth for 7 days) | game.log: **Loaded 20001 provinces**; defines → provinces 21 s; game launched; no crash dump. **EXP-04: no line in any log mentions 19998/19999/20000** (the define comment says sub-8-px provinces are logged; either the log line needs `-debug` or it isn't written in 1.19.3) | **Loads, smooth. 6/7-px provinces load silently** |
+| EXP-03-24k … EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
