@@ -106,7 +106,7 @@
     {
       "id": "P00b-f4",
       "phase": "P00",
-      "title": "EXP-09: apply region-centre guard (region 113 predicted div0 in a-e)",
+      "title": "EXP-09 and EXP-08: apply the region-centre guard (EXP-09 regions 113/89/337 + unknown 99/105; EXP-08-6144 region 178 dy0, EXP-08-5632 unknown 88)",
       "agent": "pipeline-engineer",
       "scope": [
         "tools/experiments/**",
