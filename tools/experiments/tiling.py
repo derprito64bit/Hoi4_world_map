@@ -52,14 +52,21 @@ def tile(mask: np.ndarray, cw: int, ch: int, brick: bool = True, row0: int = 0) 
     return relabel_row_major(comp)
 
 
-def merge_small(labels: np.ndarray, min_px: int, max_rounds: int = 10) -> tuple:
-    """Merge labels with fewer than ``min_px`` pixels into the neighbouring label sharing the
-    longest border (neighbours are other labels >= 0; the wrap seam is ignored)."""
+def merge_small(labels: np.ndarray, min_px: int, max_rounds: int = 10, min_side: int = 0) -> tuple:
+    """Merge labels with fewer than ``min_px`` pixels, or whose bounding box is narrower or lower than
+    ``min_side`` px, into the neighbouring label sharing the longest border (neighbours are other
+    labels >= 0; the wrap seam is ignored). ``min_side`` 3 keeps every box able to hold a region
+    mean 1 px off its edges (``regioncentre.inner_margin``)."""
     labels = labels.astype(np.int64).copy()
     for _ in range(max_rounds):
         n = int(labels.max()) + 1
         area = np.bincount(labels[labels >= 0].ravel(), minlength=n)
-        small = [i for i in range(n) if 0 < area[i] < min_px]
+        thin = np.zeros(n, dtype=bool)
+        if min_side > 0:
+            for i, sl in enumerate(ndimage.find_objects((labels + 1).astype(np.int32))[:n]):
+                if sl is not None:
+                    thin[i] = min(sl[0].stop - sl[0].start, sl[1].stop - sl[1].start) < min_side
+        small = [i for i in range(n) if area[i] > 0 and (area[i] < min_px or thin[i])]
         if not small:
             break
         objs = ndimage.find_objects((labels + 1).astype(np.int32))

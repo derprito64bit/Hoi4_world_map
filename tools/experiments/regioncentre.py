@@ -100,6 +100,8 @@ class RegionCentre:
     seam: bool             # members cover column 0 and column W-1 (the region wraps)
     signature: str         # hash of the sorted member boxes: identical member boxes on the same canvas width
     fallback_strict: bool = False   # mean outside every box xmin < M <= xmax (dx test; intersection)
+    margin: int = 0                 # max over members of the mean's distance to the nearest edge of that box
+                                    # (>= 1: inside a member box under every convention, no fallback)
 
     @property
     def divisor(self):
@@ -112,6 +114,11 @@ class RegionCentre:
     @property
     def unknown(self) -> bool:
         return self.fallback_strict and self.seam
+
+    @property
+    def clear(self) -> bool:
+        """The mean lies >= 1 px inside a member box: the fallback never runs, whatever the box convention."""
+        return self.margin >= 1
 
 
 def pixel_boxes(pid: np.ndarray, n: int):
@@ -137,6 +144,28 @@ def _trunc_div(a: int, b: int) -> int:
     return q if (a >= 0) == (b > 0) else -q
 
 
+def mean_point(x0, x1, y0, y1) -> tuple:
+    """(M.x, M.y): the truncating integer mean of the member box centres ``x0 + w/2`` (w = span + 1).
+
+    Arguments are arrays of pixel boxes (y from the bottom), one entry per member.
+    """
+    n = len(x0)
+    cx = x0 + (x1 - x0 + 1) // 2
+    cy = y0 + (y1 - y0 + 1) // 2
+    return _trunc_div(int(cx.sum()), n), _trunc_div(int(cy.sum()), n)
+
+
+def inner_margin(mx: int, my: int, x0, x1, y0, y1) -> int:
+    """max over members of min(M.x - xmin, xmax - M.x, M.y - ymin, ymax - M.y) (pixel boxes).
+
+    >= 1: M lies strictly inside a member box and off all its edges, so the engine finds a
+    member box before the fallback under every box convention of the model (no division).
+    <= 0: M sits on a box edge or outside every box.
+    """
+    m = np.minimum(np.minimum(mx - x0, x1 - mx), np.minimum(my - y0, y1 - my))
+    return int(m.max()) if len(m) else 0
+
+
 def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
     """``boxes`` = pixel_boxes() arrays (xmin, xmax, ymin, ymax; y from the bottom)."""
     bx0, bx1, by0, by1 = boxes
@@ -147,10 +176,7 @@ def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
         missing = [int(i) for i in ids if i >= len(bx1) or bx1[i] < 0]
         raise KitError(f"strategic region {rid}: member provinces without pixels {missing[:10]}")
     x0, x1, y0, y1 = bx0[ids], bx1[ids], by0[ids], by1[ids]
-    cx = x0 + (x1 - x0 + 1) // 2
-    cy = y0 + (y1 - y0 + 1) // 2
-    mx = _trunc_div(int(cx.sum()), len(ids))
-    my = _trunc_div(int(cy.sum()), len(ids))
+    mx, my = mean_point(x0, x1, y0, y1)
     inside = {s: bool(((x0 <= mx) & (mx <= x1 + s) & (y0 <= my) & (my <= y1 + s)).any()) for s in INSIDE_SLACK}
     inside_strict = bool(((x0 < mx) & (mx <= x1) & (y0 < my) & (my <= y1)).any())
     rx0, ry0 = int(x0.min()), int(y0.min())
@@ -163,7 +189,7 @@ def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
     sig = hashlib.sha256(np.stack([x0, x1, y0, y1], 1).astype("<i8").tobytes()).hexdigest()[:16]
     return RegionCentre(rid, len(ids), (mx, my), (rx0, ry0, rw, rh), not inside[min(INSIDE_SLACK)],
                         not inside[max(INSIDE_SLACK)], mx - (rx0 + rw // 2), my - (ry0 + rh // 2), gap, seam, sig,
-                        not inside_strict)
+                        not inside_strict, inner_margin(mx, my, x0, x1, y0, y1))
 
 
 def region_centres(pid: np.ndarray, regions: dict) -> dict:
@@ -187,6 +213,11 @@ def unknown_regions(pid: np.ndarray, regions: dict) -> list:
     return [r for r, c in region_centres(pid, regions).items() if c.unknown]
 
 
+def not_clear(centres: dict) -> list:
+    """Regions whose mean is not >= 1 px inside a member box (they take, or may take, the fallback)."""
+    return [r for r, c in centres.items() if c.n and not c.clear]
+
+
 def guard_failures(centres: dict, observed: dict | None = None) -> list:
     """Regions a generator must not produce: unsafe, or unknown without an identical observed-loading twin.
 
@@ -199,3 +230,50 @@ def guard_failures(centres: dict, observed: dict | None = None) -> list:
         if c.unsafe or (c.unknown and not (twin is not None and twin.signature == c.signature)):
             out.append(r)
     return out
+
+
+def describe(c: RegionCentre) -> str:
+    return (f"{c.region} ({c.n} provinces, mean {c.mean}, rect {c.rect}, dx {c.dx}, dy {c.dy}, "
+            f"margin {c.margin}{', wraps' if c.seam else ''})")
+
+
+def split_known(fails: list, centres: dict, known: dict | None) -> tuple:
+    """(remaining failures, [known-risk notes]) for ``known`` = {region id: (member-box signature, reason)}.
+
+    A failure is allowed only when its region is listed AND its signature matches exactly (same member
+    boxes, hence the same mean, rect and divisors); any other failure, or a changed signature, stays.
+    """
+    known = known or {}
+    rest, notes = [], []
+    for r in fails:
+        k = known.get(r)
+        if k is not None and centres[r].signature == k[0]:
+            notes.append(f"KNOWN RISK (allowed): region {describe(centres[r])}, signature {k[0]}: {k[1]}")
+        else:
+            rest.append(r)
+    return rest, notes
+
+
+def guard_problems(centres: dict, observed: dict | None = None, clear_ids=None, known: dict | None = None,
+                   notes: list | None = None) -> list:
+    """--check messages (P00b-f4): guard failures, and regions whose mean is not >= 1 px inside a member box.
+
+    ``observed``: centres of a map seen loading (vanilla) for the wrapping-region twin rule; {} for new
+    geometry. ``clear_ids``: the regions that must never take the fallback (None = all of them).
+    ``known``: {region id: (signature, reason)} accepted as a documented known risk (``split_known``);
+    their notes are appended to ``notes``.
+    """
+    probs = []
+    fails, known_notes = split_known(guard_failures(centres, observed), centres, known)
+    if notes is not None:
+        notes.extend(known_notes)
+    if fails:
+        probs.append(f"region-centre guard: {len(fails)} regions fail (fallback with divisor 0, or a wrapping "
+                     "fallback without an identical vanilla twin): "
+                     + "; ".join(describe(centres[r]) for r in fails[:5]))
+    ids = sorted(centres) if clear_ids is None else sorted(r for r in clear_ids if r in centres)
+    loose = [r for r in ids if centres[r].n and not centres[r].clear]
+    if loose:
+        probs.append(f"region-centre guard: {len(loose)} regions take the fallback (mean not >= 1 px inside a "
+                     "member box): " + "; ".join(describe(centres[r]) for r in loose[:5]))
+    return probs

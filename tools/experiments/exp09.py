@@ -24,11 +24,12 @@ from .bmpio import read_bmp, write_bmp
 from .common import KitError, decode, ee_project, encode, fmt2, safe_join, write_bytes
 from .dds import (bgra_to_rgba, dxt5_decode, dxt5_encode, dxt5_mip_chain, dxt5_uniform_block, full_mip_count,
                   read_dds, rgba_to_bgra, write_dds)
-from .exp08 import median_colour, open_sea_mask, region_file, weather_block
+from .exp08 import layered_regions, median_colour, open_sea_mask, region_file, weather_block
 from .mapdata import (LAKE, LAND, SEA, Definition, block_ids, coast_points, coastal_flags, game_xz, interior_points,
                       new_colors, pid_from_rgb, rgb_from_pid, x_crossings)
 from .patchspec import BASELINE_ONLY, load_manifest, patched_files
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, split_lines
+from .regioncentre import guard_problems, region_centres
 from .synth import Params, layout
 from .weather import winter_icy, with_snow_of
 
@@ -96,6 +97,18 @@ def region_texts(v, files: dict):
     return lambda i: new[i] if i in new else v.region_files[v.province_region[i][1]]
 
 
+def centre_problems(v, pid: np.ndarray, new_texts: dict) -> list:
+    """EXP-09 region-centre guard (P00b-f4): all geometry is new, so ``observed`` = {} (a wrapping region that
+    takes the fallback always fails), and no region at all may take the fallback: every region's mean
+    lies >= 1 px inside a member box."""
+    try:
+        regions, _ = layered_regions(v, new_texts)
+        cs = region_centres(pid, regions)
+    except KitError as e:
+        return [f"region-centre guard: {e}"]
+    return guard_problems(cs, {}, clear_ids=None)
+
+
 def canvas():
     ee = ee_project()
     return ee.Canvas(W, H, LON0, LAT_MIN, LAT_MAX)
@@ -135,30 +148,51 @@ class Exp09(Experiment):
 
     # ------------------------------------------------------------ the synthetic map (shared by all variants)
     def units_and_anchors(self, v, cv):
+        """One run of bars per vanilla strategic region (P00b-f4 region-centre guard): its states' land then
+        lake bars (states by ID), its loose lakes, other land, then its sea provinces. A region holding a
+        landmark state becomes an anchor run: the landmark state at its landmark, the rest of the region
+        next to it (to its left for a right-aligned landmark, else to its right)."""
         t = v.types
         pstate, pregion = v.province_state, v.province_region
-        states = defaultdict(list)
+        states, members, rstates = defaultdict(list), defaultdict(list), defaultdict(set)
         for p, (sid, _) in pstate.items():
             states[sid].append(p)
-        anchor_ids = {a[0] for a in ANCHORS}
-        order = sorted(states, key=lambda s: (min(pregion[p][0] for p in states[s]), s))
-        units = []
-        for sid in order:
-            if sid in anchor_ids:
-                continue
+        for p, (rid, _) in pregion.items():
+            members[rid].append(p)
+            if p in pstate:
+                rstates[rid].add(pstate[p][0])
+
+        def bars(sid):
             ps = sorted(states[sid])
-            units.append((sid, [p for p in ps if t[p] == LAND] + [p for p in ps if t[p] == LAKE]))
-        loose = sorted(p for p in range(1, len(t)) if t[p] == LAKE and p not in pstate)
-        if loose:
-            units.append((None, loose))
-        anchors = []
-        for sid, lon, lat, align, _ in ANCHORS:
-            col, row = cv.to_pixel(lon, lat)
-            ps = sorted(states[sid])
-            anchors.append((sid, [p for p in ps if t[p] == LAND] + [p for p in ps if t[p] == LAKE],
-                            int(row), int(col), align))
-        seas = sorted((p for p in range(1, len(t)) if t[p] == SEA), key=lambda p: (pregion[p][0], p))
-        return units, anchors, seas
+            return [p for p in ps if t[p] == LAND] + [p for p in ps if t[p] == LAKE]
+
+        anchor_of = {a[0]: a for a in ANCHORS}
+        units, anchors, placed = [], [], []
+        for rid in sorted(members):
+            ps = sorted(members[rid])
+            lead = [s for s in sorted(rstates[rid]) if s in anchor_of]
+            run = [i for s in sorted(rstates[rid]) if s not in anchor_of for i in bars(s)]
+            run += [p for p in ps if p not in pstate and t[p] == LAKE]
+            run += [p for p in ps if p not in pstate and t[p] == LAND]
+            run += [p for p in ps if p not in pstate and t[p] == SEA]
+            if len(lead) > 1:
+                raise KitError(f"region {rid} holds more than one landmark state {lead}")
+            if lead:
+                sid, lon, lat, align, _ = anchor_of[lead[0]]
+                col, row = cv.to_pixel(lon, lat)
+                mark = bars(sid)
+                ids, span = ((run + mark, (len(run), len(run) + len(mark))) if align == "right"
+                             else (mark + run, (0, len(mark))))
+                anchors.append((sid, ids, int(row), int(col), align, span))
+                placed += ids
+            elif run:
+                units.append((rid, run))
+                placed += run
+        want = set(range(1, len(t)))
+        if sorted(placed) != sorted(want):
+            raise KitError(f"EXP-09: {len(want ^ set(placed))} provinces are not in exactly one region run "
+                           f"(e.g. {sorted(want ^ set(placed))[:5]})")
+        return units, anchors
 
     def base(self, ctx):
         """{rel path: bytes} of the synthetic map (cached per process)."""
@@ -167,11 +201,11 @@ class Exp09(Experiment):
         v = ctx.vanilla
         cv = canvas()
         globe = cv.globe_mask()
-        units, anchors, seas = self.units_and_anchors(v, cv)
+        units, anchors = self.units_and_anchors(v, cv)
         vdef = v.definition
         n0 = vdef.n
         north_row = int(cv.to_pixel(LON0, NORTH_LAT)[1])
-        lay = layout(globe, units, anchors, seas, n0, Params(), north_row=north_row)
+        lay = layout(globe, units, anchors, n0, Params(region_max=REGION_CHUNK), north_row=north_row)
         pid = lay.pid
         n = int(pid.max()) + 1
         types = np.concatenate([v.types, np.full(n - n0, SEA, dtype=np.int8)])
@@ -232,6 +266,11 @@ class Exp09(Experiment):
         files["map/adjacencies.csv"] = encode("\n".join([al[0]] + al[term:]))
         # regions for the new provinces
         files.update(self.new_regions(v, pid, lay, types))
+        # region-centre guard (P00b-f4): no region (vanilla or new) may take the engine's centre fallback
+        probs = centre_problems(v, pid, {rel: decode(data) for rel, data in files.items()
+                                         if rel.startswith("map/strategicregions/")})
+        if probs:
+            raise KitError("EXP-09 layout: " + " | ".join(probs))
         # screenshot 6 compares ice on both sides of the outline: all water there must have icy winter weather
         pts = [lay.anchors[s] for s in SHOT6_STATES]
         bad = not_icy(shot6_water(pid, types, pts), region_texts(v, files), set(lay.off_ids))
@@ -252,8 +291,12 @@ class Exp09(Experiment):
                 run = []
         files["map/railways.txt"] = encode("\n".join(rails) + "\n")
         self._base = files
+        new_sizes = [len(ids) for _, ids in lay.sea_regions + lay.off_regions]
+        vanilla_regions = len(v.region_files)              # incl. vanilla's regions without provinces
         self.layout_info = {"sea_new": len(lay.sea_new), "off": len(lay.off_ids), "provinces": n - 1,
-                            "anchors": lay.anchors, "off_ids": (lay.off_ids[0], lay.off_ids[-1])}
+                            "anchors": lay.anchors, "off_ids": (lay.off_ids[0], lay.off_ids[-1]),
+                            "regions": vanilla_regions + len(new_sizes), "regions_vanilla": vanilla_regions,
+                            "regions_single": sum(k == 1 for k in new_sizes)}
         return files
 
     def weather_sources(self, v) -> dict:
@@ -278,33 +321,24 @@ class Exp09(Experiment):
         wx = self.weather_sources(v)
         rid = max(r for r, _ in v.province_region.values()) + 1
         files, loc = {}, ["﻿l_english:"]
-        north = set(lay.sea_north)
-        groups = [("north", [i for i in lay.sea_new if i in north]), ("south", [i for i in lay.sea_new if i not in north])]
-        k_name = 0
-        for side, seas in groups:
-            for k in range(0, len(seas), REGION_CHUNK):
-                ids = seas[k:k + REGION_CHUNK]
-                k_name += 1
-                name = f"EXP-09 extra sea {k_name} ({side})"
-                files[f"map/strategicregions/{rid}-{name}.txt"] = encode(
-                    region_file(rid, name, ids, wx[side], "water_deep_ocean"))
-                loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
-                rid += 1
+        # new seas: compact regions from synth (mean inside a member box, never across the seam)
+        for k, (side, ids) in enumerate(lay.sea_regions, 1):
+            name = f"EXP-09 extra sea {k} ({side})"
+            files[f"map/strategicregions/{rid}-{name}.txt"] = encode(
+                region_file(rid, name, ids, wx[side], "water_deep_ocean"))
+            loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
+            rid += 1
+        # filler: named by the quadrant of its pixels' centre, weather by its side (north: snow + arctic water)
         ys, xs = np.nonzero(np.isin(pid, lay.off_ids))
         ids_at = pid[ys, xs]
         n = int(pid.max()) + 1
         cnt = np.bincount(ids_at, minlength=n)
-        cy = np.bincount(ids_at, weights=ys, minlength=n) / np.maximum(cnt, 1)
-        cx = np.bincount(ids_at, weights=xs, minlength=n) / np.maximum(cnt, 1)
-        quads = defaultdict(list)
-        for i in lay.off_ids:
-            quads[("N" if cy[i] < H / 2 else "S") + ("W" if cx[i] < W / 2 else "E")].append(i)
-        for q in ("NW", "NE", "SW", "SE"):
-            if not quads[q]:
-                continue
-            name = f"EXP-09 off-globe {q}"
-            side = "filler_north" if q[0] == "N" else "south"
-            body = region_file(rid, name, quads[q], wx[side], "none").replace("\tnaval_terrain=none\n", "")
+        sx = np.bincount(ids_at, weights=xs, minlength=n)
+        for k, (side, ids) in enumerate(lay.off_regions, 1):
+            q = ("N" if side == "north" else "S") + ("W" if sx[ids].sum() / cnt[ids].sum() < W / 2 else "E")
+            name = f"EXP-09 off-globe {q} {k}"
+            body = region_file(rid, name, ids, wx["filler_north" if side == "north" else "south"], "none") \
+                .replace("\tnaval_terrain=none\n", "")
             files[f"map/strategicregions/{rid}-{name}.txt"] = encode(body)
             loc.append(f' STRATEGICREGION_{rid}:0 "{name}"')
             rid += 1
@@ -497,10 +531,16 @@ class Exp09(Experiment):
                   "shader errors).",
                   "Did hover/click near the curved edge pick the right province (yes/no)?"],
             expected=self.expected(build_id).text, cannot=["EXP-09"], user_dir=ctx.user,
+            cannot_extra=[f"This build has {info['regions']} strategic regions (the normal game: "
+                          f"{info['regions_vanilla']}), and {info['regions_single']} of them hold a single province "
+                          "(the normal game's smallest has 3); no map with that many regions has been seen loading. "
+                          "If the game fails to load or crashes, those are rival causes to the edge look, so a "
+                          "failure does not by itself say anything about the camera or shader variants."],
             notes=["This map is synthetic, made only for this look test: every province, state and country of "
-                   "the normal game still exists (so the game loads and plays), but land is drawn as rows of small "
-                   "bars in the middle of the map, surrounded by ocean. Only four landmark states sit at their real "
-                   "places: " + anchors + ".",
+                   "the normal game still exists (so the game loads and plays), but every province is drawn as a "
+                   "small bar in rows in the middle of the map, surrounded by new ocean: each strategic region is "
+                   "one run of bars (its land, lakes and seas side by side; one bar in the middle of some runs is "
+                   "twice as wide, on purpose). Only four landmark states sit at their real places: " + anchors + ".",
                    f"The area outside the curved outline is {info['off']} lake provinces coloured like ocean "
                    f"(provinces {info['off_ids'][0]}..{info['off_ids'][1]}); ships cannot enter them.",
                    "Weather: the new sea regions north of 50 N use the vanilla Bering Sea weather (-20..0 C, arctic "
@@ -576,6 +616,9 @@ class Exp09(Experiment):
             seen.update(block_ids(decode(p.read_bytes()), "provinces"))
         if set(seen) != set(range(n0, d.n)) or any(c != 1 for c in seen.values()):
             probs.append("new provinces are not each in exactly one new region")
+        # region-centre guard (P00b-f4): 0 guard failures, no region takes the centre fallback
+        probs += centre_problems(v, pid, {p.name: decode(p.read_bytes())
+                                          for p in sorted((out / "map/strategicregions").glob("*.txt"))})
         # shared base: every variant must carry exactly the same map files (only defines/shaders differ)
         shared = self.shared_files(ctx)
         for rel, data in sorted(shared.items()):
@@ -586,8 +629,11 @@ class Exp09(Experiment):
         got_regions = {p.relative_to(out).as_posix(): p.read_bytes()
                        for p in (out / "map/strategicregions").glob("*.txt")}
         pts = [tuple(self.layout_info["anchors"][s]) for s in SHOT6_STATES]
-        bad = not_icy(shot6_water(pid, types, pts), region_texts(v, got_regions),
-                      set(np.nonzero(off)[0].tolist()))
+        try:
+            bad = not_icy(shot6_water(pid, types, pts), region_texts(v, got_regions),
+                          set(np.nonzero(off)[0].tolist()))
+        except KeyError as e:
+            bad = [f"province {e} is in no strategic region"]
         if bad:
             probs.append(f"screenshot-6 water without icy winter weather: {bad[:10]}")
         # variant extras

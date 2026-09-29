@@ -118,6 +118,36 @@ def exp09_builds(ctx, tmp_path_factory):
     return e, outs
 
 
+# landmark state -> (cols, rows) of its bars in the pre-f4 EXP-09 builds (2026-09-28): the doubled middle bar
+# of P00b-f4 must never move a landmark
+LANDMARK_BOXES = {822: ((4323, 4346), (148, 167)), 463: ((764, 853), (153, 172)),
+                  101: ((2162, 2191), (19, 38)), 953: ((1680, 1697), (2226, 2245))}
+
+
+def test_exp09_landmarks_keep_their_pre_f4_pixels(ctx, exp09_builds):
+    import numpy as np
+    from experiments.exp09 import ANCHORS
+    e, outs = exp09_builds
+    pid, _ = _pid_of(list(outs.values())[0])
+    states = {}
+    for p, (sid, _) in ctx.vanilla.province_state.items():
+        states.setdefault(sid, []).append(p)
+    assert set(LANDMARK_BOXES) == {a[0] for a in ANCHORS}
+    for sid, ((c0, c1), (r0, r1)) in LANDMARK_BOXES.items():
+        ys, xs = np.nonzero(np.isin(pid, states[sid]))
+        assert (xs.min(), xs.max(), ys.min(), ys.max()) == (c0, c1, r0, r1), sid
+        assert len(xs) == (c1 - c0 + 1) * (r1 - r0 + 1), sid        # one solid run, no gap, no doubled bar outside
+
+
+def test_exp09_readme_names_the_region_count_as_a_rival_cause(ctx, exp09_builds):
+    e, outs = exp09_builds
+    info = e.layout_info
+    text = (list(outs.values())[0] / "README.txt").read_text(encoding="utf-8")
+    cannot = text.split("WHAT THIS TEST CANNOT PROVE", 1)[1]
+    assert f"{info['regions']} strategic regions (the normal game: {info['regions_vanilla']})" in cannot
+    assert f"{info['regions_single']} of them hold a single province" in cannot and "rival causes" in cannot
+
+
 def test_exp09_fresh_builds_pass_and_share_the_base(ctx, exp09_builds):
     e, outs = exp09_builds
     for bid, out in outs.items():
@@ -161,11 +191,104 @@ def test_exp09_check_catches_filler_without_snow_and_arctic_water(ctx, exp09_bui
     """The northern filler must have winter snow AND arctic water; losing either one fails --check."""
     e, outs = exp09_builds
     bid, out = list(outs.items())[0]
-    p = next((out / "map" / "strategicregions").glob("*off-globe NE.txt"))
-    orig = p.read_bytes()
-    assert re.search(rb"(?<![\w])snow=0\.[1-9]", orig) and b"arctic_water=1.000" in orig
+    # P00b-f4: the filler is split into several compact regions per quadrant; spoil every northern one
+    # (Chukotka is in the NE, Alaska in the NW quadrant)
+    ps = sorted((out / "map" / "strategicregions").glob("*off-globe N*.txt"))
+    origs = {p: p.read_bytes() for p in ps}
+    assert any("off-globe NE" in p.name for p in ps) and any("off-globe NW" in p.name for p in ps)
+    for orig in origs.values():
+        assert re.search(rb"(?<![\w])snow=0\.[1-9]", orig) and b"arctic_water=1.000" in orig
     try:
-        p.write_bytes(spoil(orig))
+        for p, orig in origs.items():
+            p.write_bytes(spoil(orig))
         assert any("icy winter weather" in x for x in e.check(ctx, bid, out))
     finally:
+        for p, orig in origs.items():
+            p.write_bytes(orig)
+
+
+# ---------------------------------------------------------------- P00b-f4 region-centre guard
+def _pid_of(out):
+    from experiments.bmpio import read_bmp
+    from experiments.common import decode
+    from experiments.mapdata import Definition, pid_from_rgb
+    d = Definition.parse(decode((out / "map/definition.csv").read_bytes()))
+    return pid_from_rgb(read_bmp((out / "map/provinces.bmp").read_bytes()).pixels, d.colors()), d
+
+
+def _split_off_a_strip(out, pid):
+    """Split a new region into a strip pair (two 4-neighbours whose mean sits on a box edge) and the rest (a new
+    region file), so every province stays in exactly one region. Returns a restore function."""
+    from experiments.common import decode
+    from experiments.exp08 import region_file
+    from experiments.mapdata import block_ids
+    from experiments.regiongroup import Boxes, neighbours
+    bx = Boxes(pid)
+    files = sorted((out / "map" / "strategicregions").glob("*.txt"))
+    rid_of = {f: int(re.search(rb"\bid=(\d+)", f.read_bytes()).group(1)) for f in files}
+    weather = "\tweather={\n\t}"
+    for f in files:
+        orig = f.read_bytes()
+        ids = block_ids(decode(orig), "provinces")
+        nb = neighbours(pid, ids)
+        pair = next(([a, b] for a in sorted(nb) for b in nb[a] if a < b and bx.margin([a, b]) <= 0), None)
+        if pair is None or len(ids) < 3:
+            continue
+        new_id = max(rid_of.values()) + 1
+        extra = f.parent / f"{new_id}-test rest.txt"
+        f.write_bytes(region_file(rid_of[f], "test strip", pair, weather, "water_deep_ocean").encode())
+        extra.write_bytes(region_file(new_id, "test rest", [i for i in ids if i not in pair], weather,
+                                      "water_deep_ocean").encode())
+
+        def restore():
+            f.write_bytes(orig)
+            extra.unlink()
+        return restore
+    raise AssertionError("no new region holds a strip pair")
+
+
+def test_exp08_check_catches_a_vanilla_province_gaining_padding_pixels(ctx, exp08_build):
+    from experiments.bmpio import read_bmp, write_bmp
+    exp, bid, out = exp08_build
+    p = out / "map" / "provinces.bmp"
+    orig = p.read_bytes()
+    b = read_bmp(orig)
+    px = b.pixels.copy()
+    px[511, 100] = px[512, 100]                    # the padding pixel above the old top edge takes the ID below
+    try:
+        p.write_bytes(write_bmp(b, px))
+        probs = exp.check(ctx, bid, out)
+        assert any("may gain pixels" in x for x in probs)
+        assert any("changed their centre calculation" in x for x in probs)
+    finally:
         p.write_bytes(orig)
+    assert exp.check(ctx, bid, out) == []
+
+
+def test_exp08_check_catches_a_new_region_on_the_fallback_path(ctx, exp08_build):
+    exp, bid, out = exp08_build
+    pid, _ = _pid_of(out)
+    restore = _split_off_a_strip(out, pid)
+    try:
+        assert any("region-centre guard" in x and "take the fallback" in x for x in exp.check(ctx, bid, out))
+    finally:
+        restore()
+    assert exp.check(ctx, bid, out) == []
+
+
+def test_exp09_check_catches_a_region_on_the_fallback_path(ctx, exp09_builds):
+    e, outs = exp09_builds
+    bid, out = list(outs.items())[0]
+    pid, _ = _pid_of(out)
+    restore = _split_off_a_strip(out, pid)
+    try:
+        assert any("region-centre guard" in x and "take the fallback" in x for x in e.check(ctx, bid, out))
+    finally:
+        restore()
+    assert e.check(ctx, bid, out) == []
+
+
+def test_exp08_known_risk_signature_is_vanilla_region_178(ctx):
+    """The allowance matches vanilla's own member boxes of region 178 (unchanged in the 6144 build)."""
+    from experiments.exp08 import KNOWN_RISK, vanilla_centres
+    assert vanilla_centres(ctx.vanilla)[178].signature == KNOWN_RISK["EXP-08-6144x2560"][178][0]
