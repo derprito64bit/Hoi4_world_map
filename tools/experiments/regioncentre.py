@@ -63,6 +63,46 @@ Supporting observations (vanilla 1.19.3 loads):
   * Only EXP-03-24k is flagged among the builds run in game. Region 191's dx is
     -10 / -10 / -11 / 0 / +2 in vanilla / 16k / 20k / 24k / 30k.
 
+P00b-f5 refinement (after EXP-03-div0 loaded although this model predicted a crash):
+READ FROM THE DISASSEMBLY (hoi4.exe 1.19.3.0.c01a, whole path read, not executed)
+  * Caller RVA 0x15A4770: 0 members -> centre = the stored rect centre (region + 0xE0), return.
+    Otherwise M = truncating mean of ``x0 + w/2, y0 + h/2`` over the members' boxes (province
+    object + 0x88: x0, y0, w, h as int32). For each member it calls RVA 0x15A5C20, which is
+    ``x0 <= M.x <= x0 + w and y0 <= M.y <= y0 + h`` (``jl`` / ``jg``: inclusive at both ends, one
+    box per province, no pixel test). First hit -> centre = that member's box centre, no division.
+  * No hit -> RVA 0x15A4C20. It picks the region rect (region + 0xF0 points to a vector of
+    rects; the dump's region 191 holds exactly one) if M lies inside it (inclusive), else the next
+    rect 16 bytes on, and then divides ``(h/2 + M.y - ry0) / (M.x - (rx0 + rw/2))`` at once:
+    there is no zero check and no condition between the member test and this ``idiv``. The line
+    march (steps of +-10 px in x, ending when it leaves the rect or hits a member box) runs
+    after the division, so it cannot prevent it.
+  * If the centre is still <= 0 in x or y, RVA 0x15A4E90 picks the member box centre nearest to
+    M (floating-point distances, a sort); it and its sort helpers contain no integer division.
+    So a zero dy divides by nothing on this path; the dy rule below is kept only as caution.
+OBSERVED (both 24k dumps, identical): besides M, the rect and the divisor, the caller's frame
+  still holds the last member's box (province 19700): (3164, 1952, 16, 16). Its pixels span
+  x 3164..3178 (15 columns) and y 1952..1967 (16 rows, from the bottom): w = 16 is NOT span + 1.
+INFERRED (fit): the engine boxes lie on a 2-px grid (``engine_boxes``): x0 = 2 * (xmin // 2),
+  x0 + w = 2 * (xmax // 2 + 1), the same in y (bottom-up; H is even, so the parity is the same
+  counted from the top). With these boxes the dump is reproduced exactly: M (3141, 1961) from all
+  54 members, the rect (2990, 1854, 302, 170) as the plain union of the member boxes, and box
+  19700. No other simple rule tried fits all three (span + k for k = 0..3 fails M or the rect; a
+  4-px grid fails the rect; "round the size up to even" fails M). Why the engine snaps to 2 px
+  (e.g. a half-resolution province map) was not found: the code that fills province + 0x88 was
+  not located.
+  * Out-of-sample check: under the 2-px grid, EXP-03-div0's region 193 has mean (4952, 417),
+    rect (4834, 336, 234, 154) and dx = +1, not 0: it predicts that div0 loads, which it did.
+    Every other build run in game (EXP-01/02/02b/05/06/07, EXP-03 16k/20k/24k-fix/30k) has no
+    region with the fallback and dx_g2 == 0; 24k has exactly region 191. EXP-08/09 have none.
+  * What is still unknown: the rule is fitted to one region of one map plus that one load; the
+    wrapping (seam) regions and the second rect are still not observed.
+What the model does now (conservative): ``crash_g2`` is the 2-px-grid prediction (exact
+  inclusive test, dx only). ``unsafe`` = the old conservative rule OR ``crash_g2``, so nothing the
+  old model flagged becomes SAFE (EXP-03-div0 region 193 stays flagged although it loaded). Only
+  when the owner's EXP-03-191only / EXP-03-div0b runs confirm the grid rule should the old rule be
+  retired; that decision is not taken here. ``unknown`` also counts wrapping regions whose mean
+  misses every grid box.
+
 Rules for the real map (P05 and the region builder):
   * ``guard_failures(region_centres(pid, regions), observed)`` must be empty (``observed``
     = {} for new geometry); re-check after every change to provinces or membership;
@@ -84,6 +124,11 @@ from .common import KitError
 from .mapdata import bboxes
 
 INSIDE_SLACK = (0, 1, 2)   # inside-test upper bound = xmax + slack for the conventions above
+GRID = 2                   # P00b-f5: engine boxes snap to this grid (fitted to the 24k dump)
+DUMP_REGION = 191          # EXP-03-24k, both dumps
+DUMP_MEAN = (3141, 1961)
+DUMP_RECT = (2990, 1854, 302, 170)
+DUMP_BOX = (19700, (3164, 1952, 16, 16))   # last member's engine box, left in the caller's frame
 
 
 @dataclass(frozen=True)
@@ -102,18 +147,34 @@ class RegionCentre:
     fallback_strict: bool = False   # mean outside every box xmin < M <= xmax (dx test; intersection)
     margin: int = 0                 # max over members of the mean's distance to the nearest edge of that box
                                     # (>= 1: inside a member box under every convention, no fallback)
+    # P00b-f5: the same computation on 2-px-grid engine boxes (``engine_boxes``)
+    mean_g2: tuple = (0, 0)
+    rect_g2: tuple = (0, 0, 0, 0)
+    fallback_g2: bool = False       # mean outside every grid box (inclusive test, as in RVA 0x15A5C20)
+    dx_g2: int = 0                  # mean_g2.x - (rect_g2 x0 + w/2): the divisor on the grid model
 
     @property
     def divisor(self):
         return self.dx if self.fallback_strict else None
 
     @property
-    def unsafe(self) -> bool:
+    def unsafe_old(self) -> bool:
+        """The P00b-f3 r3 rule (pixel boxes, every compare convention; dx or dy)."""
         return not self.seam and ((self.fallback_strict and self.dx == 0) or (self.fallback and self.dy == 0))
 
     @property
+    def crash_g2(self) -> bool:
+        """The 2-px-grid model's prediction of the RVA 0x15A4CDC divide by zero (non-wrapping regions)."""
+        return not self.seam and self.fallback_g2 and self.dx_g2 == 0
+
+    @property
+    def unsafe(self) -> bool:
+        """Conservative: flagged by the old rule OR predicted by the grid model."""
+        return self.unsafe_old or self.crash_g2
+
+    @property
     def unknown(self) -> bool:
-        return self.fallback_strict and self.seam
+        return self.seam and (self.fallback_strict or self.fallback_g2)
 
     @property
     def clear(self) -> bool:
@@ -137,6 +198,34 @@ def province_boxes(pid: np.ndarray, n: int):
     present = x1 >= 0
     return (np.where(present, x0, 0), np.where(present, y0, 0), np.where(present, x1 - x0 + 1, 0),
             np.where(present, y1 - y0 + 1, 0))
+
+
+def engine_boxes(x0, x1, y0, y1, grid: int = GRID):
+    """(bx0, by0, bw, bh): pixel boxes (inclusive xmin..xmax, y from the bottom) snapped to the engine grid.
+
+    x0 = grid * (xmin // grid), x0 + w = grid * (xmax // grid + 1); the same in y. grid = 1 gives the
+    old convention (A) boxes (w = span + 1).
+    """
+    x0, x1, y0, y1 = (np.asarray(a, dtype=np.int64) for a in (x0, x1, y0, y1))
+    bx0 = (x0 // grid) * grid
+    by0 = (y0 // grid) * grid
+    return bx0, by0, (x1 // grid + 1) * grid - bx0, (y1 // grid + 1) * grid - by0
+
+
+def grid_centre(x0, x1, y0, y1, grid: int = GRID) -> tuple:
+    """(mean, rect, fallback, dx) of one region on engine boxes, as in RVA 0x15A4770 / 0x15A5C20 / 0x15A4C20.
+
+    mean = truncating mean of ``x0 + w/2, y0 + h/2``; rect = union of the member boxes; fallback = the
+    mean lies in no member box (inclusive at both ends); dx = mean.x - (rect x0 + rect w / 2).
+    """
+    bx, by, bw, bh = engine_boxes(x0, x1, y0, y1, grid)
+    n = len(bx)
+    mx = _trunc_div(int((bx + bw // 2).sum()), n)
+    my = _trunc_div(int((by + bh // 2).sum()), n)
+    inside = bool(((bx <= mx) & (mx <= bx + bw) & (by <= my) & (my <= by + bh)).any())
+    rx0, ry0 = int(bx.min()), int(by.min())
+    rw, rh = int((bx + bw).max()) - rx0, int((by + bh).max()) - ry0
+    return (mx, my), (rx0, ry0, rw, rh), not inside, mx - (rx0 + rw // 2)
 
 
 def _trunc_div(a: int, b: int) -> int:
@@ -187,9 +276,10 @@ def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
     gap = int(np.maximum(gx, gy).min())
     seam = bool((x0 == 0).any() and (x1 == W - 1).any())
     sig = hashlib.sha256(np.stack([x0, x1, y0, y1], 1).astype("<i8").tobytes()).hexdigest()[:16]
+    gmean, grect, gfb, gdx = grid_centre(x0, x1, y0, y1)
     return RegionCentre(rid, len(ids), (mx, my), (rx0, ry0, rw, rh), not inside[min(INSIDE_SLACK)],
                         not inside[max(INSIDE_SLACK)], mx - (rx0 + rw // 2), my - (ry0 + rh // 2), gap, seam, sig,
-                        not inside_strict, inner_margin(mx, my, x0, x1, y0, y1))
+                        not inside_strict, inner_margin(mx, my, x0, x1, y0, y1), gmean, grect, gfb, gdx)
 
 
 def region_centres(pid: np.ndarray, regions: dict) -> dict:
@@ -234,7 +324,8 @@ def guard_failures(centres: dict, observed: dict | None = None) -> list:
 
 def describe(c: RegionCentre) -> str:
     return (f"{c.region} ({c.n} provinces, mean {c.mean}, rect {c.rect}, dx {c.dx}, dy {c.dy}, "
-            f"margin {c.margin}{', wraps' if c.seam else ''})")
+            f"margin {c.margin}, grid model dx {c.dx_g2}{' fallback' if c.fallback_g2 else ''}"
+            f"{', wraps' if c.seam else ''})")
 
 
 def split_known(fails: list, centres: dict, known: dict | None) -> tuple:

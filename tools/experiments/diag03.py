@@ -10,7 +10,8 @@ writes nothing. Per build it prints the province-level features that were ruled
 in or out for the 24k crash and, most importantly, the conservative strategic-region
 centre model of ``regioncentre.py``: how many regions take the engine's fallback
 path, which of them divide by zero (the EXP-03-24k crash), and which wrapping
-regions the model cannot judge (``unknown``). Exit 1 if any build has a guard
+regions the model cannot judge (``unknown``), plus the P00b-f5 2-px-grid model's
+fallback count and predicted crashes (``crash_g2``). Exit 1 if any build has a guard
 failure: an unsafe region, or an unknown one without an identical vanilla twin.
 Failures listed in ``exp08.KNOWN_RISK`` for that build ID with the exact member-box
 signature are printed as "KNOWN RISK (allowed)" and do not count.
@@ -116,12 +117,16 @@ def report(label: str, build: Path | None, game: Path, observed: dict | None = N
           f"{sum(c.fallback_all for c in fb)}), unsafe {sum(c.unsafe for c in cs.values())}, "
           f"unknown (wrapping + fallback) {len(unknown)}; closest: "
           + ", ".join(f"{c.region} (dx {c.dx}, dy {c.dy}, gap {c.gap})" for c in near))
+    print(f"   2-px grid model (P00b-f5): fallback {sum(c.fallback_g2 for c in cs.values())}, predicted crash "
+          f"{[c.region for c in cs.values() if c.crash_g2] or '-'}")
     for c in cs.values():
         if c.unsafe:
-            why = " and ".join(w for w, z in (("dx", c.dx), ("dy", c.dy)) if z == 0)
+            why = " and ".join(w for w, z in (("dx", c.dx), ("dy", c.dy)) if z == 0 and c.unsafe_old) or "grid dx"
             print(f"   UNSAFE region {c.region} {names.get(c.region, '?')}: {why} = 0, {c.n} provinces, mean point "
                   f"{c.mean}, rect {c.rect}, gap to nearest box {c.gap} px"
-                  + ("" if c.fallback_all else " (fallback only under the strictest box convention)"))
+                  + ("" if c.fallback_all else " (fallback only under the strictest box convention)")
+                  + f"; grid model: mean {c.mean_g2}, rect {c.rect_g2}, dx {c.dx_g2}"
+                  + (" -> predicted crash" if c.crash_g2 else " -> no crash predicted"))
     for c in unknown:
         twin = observed.get(c.region)
         tag = "identical in vanilla, observed loading" if twin is not None and twin.signature == c.signature else "NEW"
