@@ -53,6 +53,7 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | Build | Result with -debug |
 |---|---|
 | EXP-02-1200 (23:06) | **Loads and plays**, but error.log: `Province 2972 has TOO LARGE BOX`, `Province 8337 has TOO LARGE BOX`; `prov 8337 stack 19/20 Ship in port … is too far away from center (dist 164 4)` → TOO LARGE BOX is a **non-fatal warning**, but it disturbs unit/ship placement. A 1200-px 1-px strip triggers it; vanilla 280×115 doesn't → threshold between 280 and 1200 px of width → re-run 600 and 300 with -debug |
+| EXP-02-600 (2026-09-30 07:24) | Loads, plays. error.log: **no TOO LARGE BOX**; only `pdxmapborders.cpp: One-pixel province color found at 4770, 1029` (a strip fragment) → **for a 1-px strip the threshold lies between 600 and 1200 px of width**. EXP-02-300 and strip-full re-runs skipped: they add nothing (300 < 600 is clean; strip-full > 1200 triggers) |
 
 ## Region-centre model status (2026-09-29)
 - The crash site is confirmed from the 24k dump (region-centre code, region 191 Northern Norway). The **trigger condition is not**: the model predicted div0 would crash and it loaded. The model over-predicts, so as a guard it is conservative (false alarms only) and stays in use for P05/P07. It must not be cited as the cause mechanism.
