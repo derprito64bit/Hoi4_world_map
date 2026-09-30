@@ -256,8 +256,15 @@ def fractioned_naval(pid: np.ndarray, province_region: dict, types: np.ndarray) 
 
 
 def fractioned_parts(pid: np.ndarray, province_region: dict, types: np.ndarray) -> dict:
-    """{region id: sorted sea provinces outside the region's largest connected piece} for fractioned naval
-    regions (the IDs the engine lists as separated; ties: the piece with the lowest ID counts as largest)."""
+    """{region id: sorted sea provinces outside the piece that holds the region's lowest sea ID} for
+    fractioned naval regions: the IDs the engine lists as "separated from the rest".
+
+    P00b-f7: the engine keeps the piece of the lowest ID, not the largest piece: in EXP-09a's region
+    "extra sea 37" it listed the 18-province piece and kept the 6-province piece of 14455. All 8 logged
+    regions (EXP-02b-block-400: 2, EXP-09a: 6) fit this; in each of them the lowest sea ID is also the
+    first one listed in the region file, so "the piece of the first listed province" fits equally: the
+    printed IDs are verified only for region files that list their provinces ascending (whether a region
+    is fractioned does not depend on it)."""
     from .mapdata import adjacency_pairs
     groups = naval_regions(province_region, types)
     bad = fractioned_naval(pid, province_region, types)
@@ -280,6 +287,6 @@ def fractioned_parts(pid: np.ndarray, province_region: dict, types: np.ndarray) 
         comps = {}
         for p in sorted(ms):
             comps.setdefault(find(p), []).append(p)
-        keep = max(comps.values(), key=lambda c: (len(c), -min(c)))
+        keep = comps[find(min(ms))]
         out[rid] = sorted(ms - set(keep))
     return out

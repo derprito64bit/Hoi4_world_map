@@ -23,7 +23,8 @@ project canvas:
   off-globe pixel (outside the Equal Earth outline, from
   ``ee_project.Canvas.globe_mask``) belongs to a new lake province (the filler).
   Both are grouped into new regions by ``regiongroup.grow_regions`` (compact, mean
-  inside a member box, never across the wrap seam), after every pixel repair.
+  inside a member box, never across the wrap seam, each region one 4-connected piece so
+  no naval region is "fractioned", P00b-f7), after every pixel repair.
 The geometry is not vanilla's and not real-world except for the four landmark
 points; only IDs and attributes come from vanilla.
 """
@@ -53,6 +54,8 @@ class Params:
     min_off: int = 64
     margin: int = 2
     region_max: int = 40          # members per new sea / filler region
+    connected_regions: bool = True   # P00b-f7: every new region one 4-connected piece (False: the pre-f7
+                                     # grouping that cut 6 EXP-09 sea regions in pieces; kept to reproduce it)
 
 
 @dataclass
@@ -248,7 +251,10 @@ def layout(globe: np.ndarray, units: list, anchors: list, next_id: int, p: Param
     oid = pid[ys_, xs_]
     ocy = np.bincount(oid, weights=ys_, minlength=len(off_set)) / np.maximum(np.bincount(oid, minlength=len(off_set)), 1)
     off_cls = {i: ("north" if ocy[i] < H / 2 else "south") for i in off_ids}
-    sea_regions = [(sea_cls[g[0]], g) for g in grow_regions(pid, sea_new, sea_cls, p.region_max, boxes=bx)]
-    off_regions = [(off_cls[g[0]], g) for g in grow_regions(pid, off_ids, off_cls, p.region_max, boxes=bx)]
+    kc = p.connected_regions
+    sea_regions = [(sea_cls[g[0]], g) for g in grow_regions(pid, sea_new, sea_cls, p.region_max, boxes=bx,
+                                                            keep_connected=kc)]
+    off_regions = [(off_cls[g[0]], g) for g in grow_regions(pid, off_ids, off_cls, p.region_max, boxes=bx,
+                                                            keep_connected=kc)]
     return Layout(pid=pid, sea_new=sea_new, sea_north=sea_north, off_ids=off_ids, lines=lines, anchors=out_anchor,
                   seam_fixes=seam_fixes, runs=runs, sea_regions=sea_regions, off_regions=off_regions)

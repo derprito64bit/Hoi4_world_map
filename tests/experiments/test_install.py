@@ -8,6 +8,15 @@ from experiments import install as inst
 from experiments.common import KitError, is_within, safe_join
 
 
+REGISTERED = inst.registered_ids()
+
+
+@pytest.fixture(autouse=True)
+def fixture_id_registered(monkeypatch):
+    """The fixture build 'EXP-01A' is not a real build id; register it next to the real ones for these tests."""
+    monkeypatch.setattr(inst, "registered_ids", lambda: REGISTERED | {"EXP-01A"})
+
+
 @pytest.fixture
 def setup(tmp_path):
     user = tmp_path / "user"
@@ -329,3 +338,97 @@ def test_refuses_retired_builds_even_when_a_stale_folder_exists(setup, tmp_path,
         inst.install(bid, user, build_root=build, dry_run=True)
     assert snapshot(tmp_path) == before
     assert inst.uninstall(bid, user, build_root=build) is None      # uninstall stays possible (nothing there)
+
+
+@pytest.mark.parametrize("bid", ["EXP-02b-block-400", "EXP-08-5632x2560", "EXP-08-6144x2560"])
+def test_refuses_concluded_builds_even_when_the_folder_exists(setup, tmp_path, bid):
+    """P00b-f7: concluded builds (answer recorded; EXP-08 crashed at the canvas-size site, block-400 was
+    rejected) stay buildable and checkable, but install.py refuses them, dry run included."""
+    from experiments.registry import CONCLUDED
+    user, build = setup
+    assert bid in CONCLUDED
+    (build / bid).mkdir()
+    (build / bid / "descriptor.mod").write_text(f'name="P00b {bid} test"\nversion="1"\n', encoding="utf-8")
+    before = snapshot(tmp_path)
+    for dry in (False, True):
+        with pytest.raises(KitError, match="concluded"):
+            inst.install(bid, user, build_root=build, dry_run=dry)
+    assert snapshot(tmp_path) == before
+    assert inst.uninstall(bid, user, build_root=build) is None      # uninstall stays possible (nothing there)
+
+
+def test_cli_refuses_a_concluded_build(setup, monkeypatch, capsys):
+    user, build = setup
+    (build / "EXP-08-6144x2560").mkdir()
+    (build / "EXP-08-6144x2560" / "descriptor.mod").write_text('name="P00b EXP-08-6144x2560 x"\n', encoding="utf-8")
+    monkeypatch.setattr(inst, "user_dir", lambda: user)
+    monkeypatch.setattr(inst, "BUILD_ROOT", build)
+    assert inst.main(["EXP-08-6144x2560", "--dry-run"]) == 2
+    assert "concluded" in capsys.readouterr().err
+    assert not list((user / "mod").iterdir())
+
+
+# ---------------------------------------------------------------- P00b-f7 r2: letter case (Windows paths ignore it)
+def _stale(build, folder):
+    (build / folder).mkdir()
+    (build / folder / "descriptor.mod").write_text(f'name="P00b {folder} x"\nversion="1"\n', encoding="utf-8")
+
+
+@pytest.mark.parametrize("bid,folder,word", [
+    ("EXP-08-6144X2560", "EXP-08-6144x2560", "concluded"),
+    ("EXP-02B-block-400", "EXP-02b-block-400", "concluded"),
+    ("EXP-02b-BLOCK-400", "EXP-02b-block-400", "concluded"),
+    ("exp-08-5632x2560", "EXP-08-5632x2560", "concluded"),
+    ("EXP-02b-block-800-SEA", "EXP-02b-block-800-sea", "retired"),
+    ("EXP-02B-BLOCK-800-LAND", "EXP-02b-block-800-land", "retired"),
+])
+def test_case_variants_of_retired_and_concluded_ids_are_refused(setup, tmp_path, monkeypatch, capsys, bid, folder,
+                                                                word):
+    user, build = setup
+    _stale(build, folder)
+    before = snapshot(tmp_path)
+    for dry in (False, True):
+        with pytest.raises(KitError, match=word):
+            inst.install(bid, user, build_root=build, dry_run=dry)
+    monkeypatch.setattr(inst, "user_dir", lambda: user)
+    monkeypatch.setattr(inst, "BUILD_ROOT", build)
+    assert inst.main([bid, "--dry-run"]) == 2 and word in capsys.readouterr().err
+    assert inst.main([bid]) == 2 and word in capsys.readouterr().err
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("bid", ["EXP-01-uk-a", "exp-01-UK-A", "EXP-09A", "EXP-03-24K"])
+def test_a_case_variant_of_a_normal_id_is_refused_not_normalised(setup, tmp_path, monkeypatch, capsys, bid):
+    """Choice (r2): refuse. The launcher file name, name= and path= all carry the id, so one exact spelling only."""
+    user, build = setup
+    real = next(b for b in REGISTERED if b.casefold() == bid.casefold())
+    _stale(build, real)
+    before = snapshot(tmp_path)
+    for dry in (False, True):
+        with pytest.raises(KitError, match=f"did you mean '{real}'"):
+            inst.install(bid, user, build_root=build, dry_run=dry)
+    monkeypatch.setattr(inst, "user_dir", lambda: user)
+    monkeypatch.setattr(inst, "BUILD_ROOT", build)
+    assert inst.main([bid, "--dry-run"]) == 2 and "not a registered build id" in capsys.readouterr().err
+    assert inst.main([bid]) == 2
+    assert snapshot(tmp_path) == before
+    assert inst.install(real, user, build_root=build, dry_run=True) == user / "mod" / f"p00b_{real}.mod"
+
+
+def test_unregistered_ids_and_misnamed_folders_are_refused(setup, monkeypatch):
+    user, build = setup
+    _stale(build, "EXP-04-NEW")
+    with pytest.raises(KitError, match="not a registered build id"):
+        inst.install("EXP-04-NEW", user, build_root=build, dry_run=True)
+    # a registered id whose folder on disk is spelled differently (e.g. copied by hand) is refused too
+    monkeypatch.setattr(inst, "registered_ids", lambda: REGISTERED | {"EXP-01A", "EXP-04-new"})
+    with pytest.raises(KitError, match="is not exactly 'EXP-04-new'"):
+        inst.install("EXP-04-new", user, build_root=build, dry_run=True)
+    assert not list((user / "mod").iterdir())
+
+
+def test_registered_ids_are_the_listed_builds():
+    from experiments.registry import CONCLUDED, RETIRED
+    assert {"EXP-01-UK-A", "EXP-09a", "EXP-08-6144x2560", "EXP-02b-block-400"} <= REGISTERED
+    assert set(CONCLUDED) <= REGISTERED and not set(RETIRED) & REGISTERED
+    assert len({b.casefold() for b in REGISTERED}) == len(REGISTERED)          # no two ids differ only in case

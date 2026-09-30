@@ -4,7 +4,10 @@ The EXP-03-24k crash (``regioncentre.py``) happens only when a region's mean poi
 in no member box. ``grow_regions`` builds regions whose mean lies >= 1 px inside a
 member box (``regioncentre.inner_margin``), so the fallback never runs under any box
 convention, and which never contain members at both column 0 and column W-1 (the model
-does not cover wrapping regions). Pure numpy, deterministic, testable on tiny maps.
+does not cover wrapping regions). Every region is one 4-connected piece (P00b-f7): the engine
+refuses a naval strategic region whose sea provinces fall apart (``MAP_ERROR: Naval strategic
+region ... is fractioned``; EXP-09a, 2026-09-30), so members are dropped again only when the rest
+stays connected (``connected``). Pure numpy, deterministic, testable on tiny maps.
 """
 from __future__ import annotations
 
@@ -52,16 +55,35 @@ def neighbours(pid: np.ndarray, ids) -> dict:
     return {i: sorted(v) for i, v in out.items()}
 
 
+def connected(members, nb: dict) -> bool:
+    """True if ``members`` form one piece over the neighbour lists ``nb`` ({id: [ids]})."""
+    ms = set(members)
+    if len(ms) <= 1:
+        return True
+    start = min(ms)
+    seen, todo = {start}, [start]
+    while todo:
+        for j in nb[todo.pop()]:
+            if j in ms and j not in seen:
+                seen.add(j)
+                todo.append(j)
+    return len(seen) == len(ms)
+
+
 def grow_regions(pid: np.ndarray, ids, cls: dict | None = None, max_members: int = 40, margin: int = 1,
-                 boxes: Boxes | None = None) -> list:
+                 boxes: Boxes | None = None, keep_connected: bool = True) -> list:
     """Partition ``ids`` into regions (sorted lists) that each pass ``Boxes.ok``.
 
     The smallest unassigned ID seeds a region, which grows breadth-first over 4-neighbours of
     the same class (``cls[id]``, e.g. north/south weather), nearest to the seed first, to at most
     ``max_members``. If its mean is not >= ``margin`` px inside a member box, members are dropped
     again (the first single removal, farthest first, that makes it pass; else the farthest one)
-    and seed later regions. A single member passes when its box is >= 3 px each way; a region
-    that still fails is merged into a neighbouring region of its class with which the union
+    and seed later regions. With ``keep_connected`` (default; P00b-f7) only members whose removal
+    leaves the rest one 4-connected piece are dropped (a connected region always has such a member
+    besides the seed), so every region stays one piece; ``keep_connected=False`` is the pre-f7
+    behaviour that cut 6 EXP-09 sea regions in pieces, kept only to reproduce that record (EXP-08's
+    padding regions come out byte-identical either way). A single member passes when its box is
+    >= 3 px each way; a region that still fails is merged into a neighbouring region of its class with which the union
     passes, else KitError.
     """
     ids = sorted(int(i) for i in ids)
@@ -92,6 +114,8 @@ def grow_regions(pid: np.ndarray, ids, cls: dict | None = None, max_members: int
             frontier |= {j for j in nb[pick] if j not in group_of and j not in inside and cls.get(j) == c0}
         while len(g) > 1 and not bx.ok(g, margin):
             far = sorted(g[1:], key=lambda j: (-dist(j, seed), j))
+            if keep_connected:
+                far = [j for j in far if connected([i for i in g if i != j], nb)]
             drop = next((j for j in far if bx.ok([i for i in g if i != j], margin)), far[0])
             g.remove(drop)
         gi = len(groups)
@@ -124,4 +148,9 @@ def grow_regions(pid: np.ndarray, ids, cls: dict | None = None, max_members: int
                 break
         else:
             raise KitError(f"cannot form a region around province {g[0]} whose mean lies inside a member box")
-    return [sorted(g) for g in groups if g]
+    out = [sorted(g) for g in groups if g]
+    if keep_connected:
+        split = [g[0] for g in out if not connected(g, nb)]
+        if split:                         # cannot happen (growth, drops and merges keep pieces whole): fail loudly
+            raise KitError(f"regions around provinces {split[:5]} are not one 4-connected piece")
+    return out

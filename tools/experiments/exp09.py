@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import texts
+from . import naval, texts
 from .base import Expected, Experiment, check_descriptor, check_file_set
 from .bmpio import read_bmp, write_bmp
 from .common import KitError, decode, ee_project, encode, fmt2, safe_join, write_bytes
@@ -109,6 +109,13 @@ def centre_problems(v, pid: np.ndarray, new_texts: dict) -> list:
     return guard_problems(cs, {}, clear_ids=None)
 
 
+def naval_findings(v, pid: np.ndarray, types: np.ndarray, new_texts: dict) -> dict:
+    """``naval.findings`` for vanilla's regions plus the new region files ({rel or name: text}) on this map."""
+    pregion = dict(v.province_region)
+    pregion.update(naval.province_region([(Path(k).name, t) for k, t in sorted(new_texts.items())]))
+    return naval.findings(pid, types, pregion)          # names from the file names (EXP-09's = its loc names)
+
+
 def canvas():
     ee = ee_project()
     return ee.Canvas(W, H, LON0, LAT_MIN, LAT_MAX)
@@ -194,22 +201,30 @@ class Exp09(Experiment):
                            f"(e.g. {sorted(want ^ set(placed))[:5]})")
         return units, anchors
 
+    def make_layout(self, v, params: Params | None = None):
+        """(synth.Layout, types) of the synthetic map; ``params`` default: Params(region_max=REGION_CHUNK)
+        (tests pass ``connected_regions=False`` to reproduce the pre-P00b-f7 regions of the EXP-09a owner run)."""
+        cv = canvas()
+        units, anchors = self.units_and_anchors(v, cv)
+        n0 = v.definition.n
+        north_row = int(cv.to_pixel(LON0, NORTH_LAT)[1])
+        lay = layout(cv.globe_mask(), units, anchors, n0, params or Params(region_max=REGION_CHUNK),
+                     north_row=north_row)
+        n = int(lay.pid.max()) + 1
+        types = np.concatenate([v.types, np.full(n - n0, SEA, dtype=np.int8)])
+        types[lay.off_ids] = LAKE
+        return lay, types
+
     def base(self, ctx):
         """{rel path: bytes} of the synthetic map (cached per process)."""
         if self._base is not None:
             return self._base
         v = ctx.vanilla
-        cv = canvas()
-        globe = cv.globe_mask()
-        units, anchors = self.units_and_anchors(v, cv)
+        lay, types = self.make_layout(v)
+        pid = lay.pid
         vdef = v.definition
         n0 = vdef.n
-        north_row = int(cv.to_pixel(LON0, NORTH_LAT)[1])
-        lay = layout(globe, units, anchors, n0, Params(region_max=REGION_CHUNK), north_row=north_row)
-        pid = lay.pid
         n = int(pid.max()) + 1
-        types = np.concatenate([v.types, np.full(n - n0, SEA, dtype=np.int8)])
-        types[lay.off_ids] = LAKE
         files = {}
         # definition
         d = vdef.copy()
@@ -271,6 +286,11 @@ class Exp09(Experiment):
                                          if rel.startswith("map/strategicregions/")})
         if probs:
             raise KitError("EXP-09 layout: " + " | ".join(probs))
+        # naval-region contiguity (P00b-f7): the engine refuses a naval region whose sea provinces fall apart
+        bad = naval_findings(v, pid, types, {rel: decode(data) for rel, data in files.items()
+                                             if rel.startswith("map/strategicregions/")})
+        if bad:
+            raise KitError("EXP-09 layout: " + "; ".join(naval.describe(bad)))
         # screenshot 6 compares ice on both sides of the outline: all water there must have icy winter weather
         pts = [lay.anchors[s] for s in SHOT6_STATES]
         bad = not_icy(shot6_water(pid, types, pts), region_texts(v, files), set(lay.off_ids))
