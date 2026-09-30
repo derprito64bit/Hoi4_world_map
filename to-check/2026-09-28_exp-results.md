@@ -46,6 +46,11 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 ## EXP-05 reading
 - trees.bmp needs no particular aspect ratio: 2:1 and 3:1 (vanilla 2.75:1) both place forests where vanilla does, with no error.log line. P09 may size trees.bmp to the canvas's proportions. Caveat: owner-eyeballed; only 2to1 has saved screenshots.
 
+## -debug re-runs (2026-09-29)
+| Build | Result with -debug |
+|---|---|
+| EXP-02-1200 (23:06) | **Loads and plays**, but error.log: `Province 2972 has TOO LARGE BOX`, `Province 8337 has TOO LARGE BOX`; `prov 8337 stack 19/20 Ship in port … is too far away from center (dist 164 4)` → TOO LARGE BOX is a **non-fatal warning**, but it disturbs unit/ship placement. A 1200-px 1-px strip triggers it; vanilla 280×115 doesn't → threshold between 280 and 1200 px of width → re-run 600 and 300 with -debug |
+
 ## Region-centre model status (2026-09-29)
 - The crash site is confirmed from the 24k dump (region-centre code, region 191 Northern Norway). The **trigger condition is not**: the model predicted div0 would crash and it loaded. The model over-predicts, so as a guard it is conservative (false alarms only) and stays in use for P05/P07. It must not be cited as the cause mechanism.
 - Follow-up WU P00b-f5 (not blocking the owner): isolate the 24k change to region 191 alone on vanilla, to see whether the crash is local to that region.
