@@ -18,7 +18,7 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-03-24k (24,000 provinces) | 2026-09-29 07:41 | "crashes while trying to get to the game menu" | `crashes/hoi4_20260929_074145`: **EXCEPTION_INT_DIVIDE_BY_ZERO** at `0x7FF6129C4CDC` (main thread); game.log stops after "4470 defines loaded", before "Loaded N provinces" → crash during map/province loading. error.log: only graphics-init lines. Active: EXP-03-24k + the 3 helper mods | **CRASH on load.** Not a ceiling: 30k loads. A 24k-specific build defect; checked and ruled out: gap-free IDs, no duplicate colours, no missing provinces, no 1-px-thin boxes, min area 10. Diagnosis WU P00b-f3 (queued after P00b-f2) |
 | EXP-03-30k (30,000 provinces) | 2026-09-29 | "runs fine, launches into menu, loaded smoothly, no issues on a 7-day run". Owner notes that the splits are concentrated in Africa (test artefact: largest-first splitting) | see log check below | **Loads, smooth** |
 | EXP-03-24k-fix (24k with the region-centre guard) | 2026-09-29 | "works great, no running issues, everything smooth" | see the log check in `docs/logs/P00b.md` | **Loads, as predicted** |
-| EXP-03-div0 (vanilla + province 2166 cut in 3 → region 193 divisor 0) | — | predicted: crash `INT_DIVIDE_BY_ZERO` at hoi4.exe+0x15A4CDC before "Loaded N provinces" | — | pending |
+| EXP-03-div0 (vanilla + province 2166 cut in 3 → region 193 divisor 0) | 2026-09-29 21:24 | **"loaded, runs perfectly in game"**; predicted crash did NOT happen | `system.log`: EXP-03-div0 active (+3 helper mods); game.log: **Loaded 13416 provinces**, game launched; no new crash dump; the build's region 193 contains 2166/13414/13415 as designed | **Prediction FAILED**: the model's crash condition is not sufficient |
 | EXP-02b strip-full / block-400 / block-800-sea / block-800-land | — | — | — | pending |
 | EXP-05-2to1 (trees.bmp 1200×600) | 2026-09-29 08:17 | 4 screenshots in `to-check/screenshots/`; the owner compared them with vanilla himself: "forest terrain still there in the same spots, game runs perfectly fine" | error.log: no tree lines | **OK**: forests in the same places |
 | EXP-08-5632x2560 | — | ready (P00b-f4). **Tests 2 things**: canvas size + seam-crossing sea province 13511 (vanilla has none) | — | pending: loads? if it crashes, exception.txt lines; error.log BOX/13511 lines |
@@ -41,6 +41,10 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 
 ## EXP-05 reading
 - trees.bmp needs no particular aspect ratio: 2:1 and 3:1 (vanilla 2.75:1) both place forests where vanilla does, with no error.log line. P09 may size trees.bmp to the canvas's proportions. Caveat: owner-eyeballed; only 2to1 has saved screenshots.
+
+## Region-centre model status (2026-09-29)
+- The crash site is confirmed from the 24k dump (region-centre code, region 191 Northern Norway). The **trigger condition is not**: the model predicted div0 would crash and it loaded. The model over-predicts, so as a guard it is conservative (false alarms only) and stays in use for P05/P07. It must not be cited as the cause mechanism.
+- Follow-up WU P00b-f5 (not blocking the owner): isolate the 24k change to region 191 alone on vanilla, to see whether the crash is local to that region.
 
 ## EXP-03 reading
 - 16k, 20k and 30k provinces load and run smoothly (province loading 21–23 s on a Ryzen 5 5600X / 32 GB / RX 6700 XT). The 24k crash was a region-centre divide-by-zero, not a ceiling (see `docs/logs/P00b.md` §13). → PROVINCE_BUDGET ≈ 20k is safe, with headroom to 30k.

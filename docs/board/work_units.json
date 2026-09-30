@@ -119,6 +119,23 @@
       "branch": "wu/P00b-f4",
       "attempts": 3,
       "notes": "r1 79d3ab2 (6144/178 conflict), r2 7cc90e6 KNOWN_RISK 178 (overwatch decision: option b, crash address discriminates); review 0/1/5 -> r3 readme (seam province 13511); r3 3132835 (README/wording only, verified by overwatch on main) -> merged"
+    },
+    {
+      "id": "P00b-f5",
+      "phase": "P00",
+      "title": "Region-centre model refinement: div0 loaded (prediction failed); build 'vanilla + 24k splits in region 191 only' and refine",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/experiments/**",
+        "tests/experiments/**"
+      ],
+      "depends_on": [
+        "P00b-f4"
+      ],
+      "status": "todo",
+      "branch": "wu/P00b-f5",
+      "attempts": 0,
+      "notes": "not blocking the owner's remaining EXP runs"
     }
   ]
 }
