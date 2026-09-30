@@ -20,11 +20,12 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-03-24k-fix (24k with the region-centre guard) | — | predicted: loads | — | pending |
 | EXP-03-div0 (vanilla + province 2166 cut in 3 → region 193 divisor 0) | — | predicted: crash `INT_DIVIDE_BY_ZERO` at hoi4.exe+0x15A4CDC before "Loaded N provinces" | — | pending |
 | EXP-02b strip-full / block-400 / block-800-sea / block-800-land | — | — | — | pending |
-| EXP-05-2to1 | 2026-09-29 08:17 | 4 screenshots (Chile, Alaska, Kamchatka, N Norway) in `to-check/screenshots/` | — | vanilla comparison pending |
+| EXP-05-2to1 (trees.bmp 1200×600) | 2026-09-29 08:17 | 4 screenshots in `to-check/screenshots/`; the owner compared them with vanilla himself: "forest terrain still there in the same spots, game runs perfectly fine" | error.log: no tree lines | **OK**: forests in the same places |
 | EXP-08-5632x2560 | — | ready (P00b-f4). **Tests 2 things**: canvas size + seam-crossing sea province 13511 (vanilla has none) | — | pending: loads? if it crashes, exception.txt lines; error.log BOX/13511 lines |
 | EXP-08-6144x2560 | — | ready. KNOWN RISK region 178 (dy 0): a crash at hoi4.exe+0x15A4CDC = region-centre issue, elsewhere = canvas size | — | pending |
 | EXP-09a–e | — | ready (redesigned: 444 regions, 14 single-province regions = rival causes if it fails) | — | pending |
-| EXP-05-3to1, EXP-06, EXP-07 | — | — | — | pending |
+| EXP-05-3to1 (trees.bmp 1800×600) | 2026-09-29 21:14 | the owner compared with vanilla (no screenshots saved): same forest spots, runs fine | `system.log`: EXP-05-3to1 active; error.log: 0 tree lines; no new crash dump | **OK** |
+| EXP-06, EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
@@ -37,6 +38,12 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 ## EXP-02 reading
 - A 1-px strip province with a bounding box 300 / 600 / 1200 px wide loads for both land and sea, with no BOX line in error.log. The spec limit BBOX_MAX 250/180 is far below what loads. Caveat: the strips have few pixels. EXP-02b (full-width strip; solid 400×400 and 800×800 blocks) tests large *filled* provinces before any BBOX_MAX change (owner gate).
 - Q-009 note: option A (sea corridors whose pixels touch across the wrap) uses the same mechanism as vanilla's own Pacific wrap, where seas touch at x=0/x=5631 and fleets cross normally, so it needs no separate engine test. Only its look (EXP-09/P14) remains open.
+
+## EXP-05 reading
+- trees.bmp needs no particular aspect ratio: 2:1 and 3:1 (vanilla 2.75:1) both place forests where vanilla does, with no error.log line. P09 may size trees.bmp to the canvas's proportions. Caveat: owner-eyeballed; only 2to1 has saved screenshots.
+
+## EXP-03 reading
+- 16k, 20k and 30k provinces load and run smoothly (province loading 21–23 s on a Ryzen 5 5600X / 32 GB / RX 6700 XT). The 24k crash was a region-centre divide-by-zero, not a ceiling (see `docs/logs/P00b.md` §13). → PROVINCE_BUDGET ≈ 20k is safe, with headroom to 30k.
 
 ## Questions for the owner
 | ID | Question | Options | Status |
