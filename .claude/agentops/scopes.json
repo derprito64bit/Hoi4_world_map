@@ -65,7 +65,13 @@
   },
   "agent_exceptions": {
     "overwatch": [
-      ".claude/settings.local.json"
+      ".claude/settings.local.json",
+      "CLAUDE.md",
+      "docs/PROJECT_SPEC.md",
+      "docs/AGENT_SYSTEM.md",
+      "docs/prompts/**",
+      ".claude/skills/**",
+      ".claude/agents/**"
     ]
   }
 }
