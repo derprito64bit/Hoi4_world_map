@@ -153,6 +153,23 @@
       "branch": "wu/P00b-f6",
       "attempts": 2,
       "notes": "block-400 rejected: MAP_ERROR sea region fractioned + TOO LARGE BOX (only visible with -debug); r1 9a0de96: EXP-02c 4 probes, block-800 retired; review 0/1/7 (ambiguity C2 vs land-area vs tile rules) -> r2; tie-breaker: strip-full with -debug; r2 de0d614 (READMEs, rule table, install refuses retired IDs, keep_foreign), verified by overwatch on main -> merged"
+    },
+    {
+      "id": "P00b-f7",
+      "phase": "P00",
+      "title": "Naval-region contiguity for all builds (EXP-09 has 6 fractioned south sea regions) + apply the check kit-wide",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/experiments/**",
+        "tests/experiments/**"
+      ],
+      "depends_on": [
+        "P00b-f6"
+      ],
+      "status": "in_progress",
+      "branch": "wu/P00b-f7",
+      "attempts": 1,
+      "notes": "owner EXP-09a run 2026-09-30 15:45"
     }
   ]
 }
