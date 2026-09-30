@@ -75,7 +75,7 @@ Bash-created files are not checked by the hook. This change is about the Write/E
 ## 6. VERIFICATION COMMANDS
 Run from the repo root in Git Bash. Each line prints the hook's exit code; the expected value is at the end.
 ```bash
-R="$PWD"; H=.claude/agentops/scope_guard.py
+R="$(pwd -W)"; H=.claude/agentops/scope_guard.py   # pwd -W: Windows path (C:/dev/...); a /c/dev/... path makes the hook treat files as outside the repo and every check wrongly returns 0
 t(){ printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"},"agent_type":"%s","cwd":"%s"}' "$1" "$2" "$R" | python $H >/dev/null 2>&1; echo "$2 $1 -> $?"; }
 t docs/PROJECT_SPEC.md overwatch                          # 0
 t docs/prompts/P05-provinces.md overwatch                 # 0
