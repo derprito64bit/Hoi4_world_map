@@ -329,3 +329,31 @@ def test_refuses_retired_builds_even_when_a_stale_folder_exists(setup, tmp_path,
         inst.install(bid, user, build_root=build, dry_run=True)
     assert snapshot(tmp_path) == before
     assert inst.uninstall(bid, user, build_root=build) is None      # uninstall stays possible (nothing there)
+
+
+@pytest.mark.parametrize("bid", ["EXP-02b-block-400", "EXP-08-5632x2560", "EXP-08-6144x2560"])
+def test_refuses_concluded_builds_even_when_the_folder_exists(setup, tmp_path, bid):
+    """P00b-f7: concluded builds (answer recorded; EXP-08 crashed at the canvas-size site, block-400 was
+    rejected) stay buildable and checkable, but install.py refuses them, dry run included."""
+    from experiments.registry import CONCLUDED
+    user, build = setup
+    assert bid in CONCLUDED
+    (build / bid).mkdir()
+    (build / bid / "descriptor.mod").write_text(f'name="P00b {bid} test"\nversion="1"\n', encoding="utf-8")
+    before = snapshot(tmp_path)
+    for dry in (False, True):
+        with pytest.raises(KitError, match="concluded"):
+            inst.install(bid, user, build_root=build, dry_run=dry)
+    assert snapshot(tmp_path) == before
+    assert inst.uninstall(bid, user, build_root=build) is None      # uninstall stays possible (nothing there)
+
+
+def test_cli_refuses_a_concluded_build(setup, monkeypatch, capsys):
+    user, build = setup
+    (build / "EXP-08-6144x2560").mkdir()
+    (build / "EXP-08-6144x2560" / "descriptor.mod").write_text('name="P00b EXP-08-6144x2560 x"\n', encoding="utf-8")
+    monkeypatch.setattr(inst, "user_dir", lambda: user)
+    monkeypatch.setattr(inst, "BUILD_ROOT", build)
+    assert inst.main(["EXP-08-6144x2560", "--dry-run"]) == 2
+    assert "concluded" in capsys.readouterr().err
+    assert not list((user / "mod").iterdir())

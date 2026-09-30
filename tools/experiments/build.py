@@ -9,7 +9,9 @@
 Vanilla files are read from $HOI4_GAME_DIR (fallback: .claude/settings.local.json)
 at build time and written only below build/experiments/ (gitignored).
 --check writes nothing: it re-reads each build and the vanilla files and fails
-(exit 1) unless only the intended property differs.
+(exit 1) unless only the intended property differs and the build passes the
+kit-wide rules (P00b-f7: every naval strategic region is one piece, ``naval.py``).
+``--check --build-root DIR`` checks the builds in another folder.
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from experiments.base import Ctx  # noqa: E402
 from experiments.common import BUILD_ROOT, REPO_ROOT, KitError, game_dir, reset_dir, sha256_tree, write_bytes  # noqa: E402
-from experiments.registry import resolve  # noqa: E402
+from experiments.registry import CONCLUDED, resolve  # noqa: E402
 
 VALIDATOR = REPO_ROOT / ".claude" / "skills" / "hoi4-map-modding" / "scripts" / "validate_map.py"
 META_DIR = BUILD_ROOT / "_meta"
@@ -60,8 +62,16 @@ def build_one(ctx, exp, bid) -> dict:
     return meta
 
 
-def check_one(ctx, exp, bid) -> bool:
-    out = BUILD_ROOT / bid
+def kit_rules(ctx, exp, bid, out: Path) -> tuple:
+    """(problems, notes) of the rules every build must pass, whatever its experiment checks (P00b-f7):
+    naval strategic regions are one piece (``naval.check_build``; documented findings of a concluded build
+    are notes)."""
+    from experiments.naval import check_build
+    return check_build(ctx, exp, bid, out)
+
+
+def check_one(ctx, exp, bid, root: Path = BUILD_ROOT) -> bool:
+    out = Path(root) / bid
     if not out.is_dir():
         print(f"FAIL {bid}: not built (run build.py {bid} first)")
         return False
@@ -71,7 +81,11 @@ def check_one(ctx, exp, bid) -> bool:
         probs = exp.check(ctx, bid, out)
     except KitError as e:
         probs = [str(e)]
-    for n in exp.check_notes:
+    kprobs, knotes = kit_rules(ctx, exp, bid, out)
+    probs = list(probs) + kprobs
+    if bid in CONCLUDED:
+        print(f"NOTE {bid}: concluded, install.py refuses it ({CONCLUDED[bid]})")
+    for n in list(exp.check_notes) + knotes:
         print(f"NOTE {bid}: {n}")
     if probs:
         print(f"FAIL {bid}: extra differences vs vanilla:")
@@ -124,7 +138,11 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--check", action="store_true", help="compare existing builds with vanilla; writes nothing")
     g.add_argument("--validate", action="store_true", help="run validate_map.py on existing builds")
+    ap.add_argument("--build-root", type=Path, default=BUILD_ROOT,
+                    help="with --check: read the builds from this folder (default build/experiments)")
     a = ap.parse_args(argv)
+    if a.build_root != BUILD_ROOT and not a.check:
+        ap.error("--build-root is only for --check (building and --validate write below build/experiments)")
     ctx = make_ctx()
     if a.target.lower() == "list":
         for e, b in resolve(ctx, "all"):
@@ -132,9 +150,13 @@ def main(argv=None) -> int:
         return 0
     todo = resolve(ctx, a.target)
     ok = True
+    failed = []
     for exp, bid in todo:
         if a.check:
-            ok &= check_one(ctx, exp, bid)
+            good = check_one(ctx, exp, bid, a.build_root)
+            ok &= good
+            if not good:
+                failed.append(bid)
         elif a.validate:
             ok &= validate_one(ctx, exp, bid)
         else:
@@ -144,7 +166,8 @@ def main(argv=None) -> int:
                 print(f"FAIL {bid}: {e}")
                 ok = False
     if a.check:
-        print("check: " + ("all builds differ from vanilla only in their intended property" if ok else "FAILED"))
+        print(f"check: {len(todo) - len(failed)} of {len(todo)} builds OK" + (f"; FAILED: {', '.join(failed)}" if failed else
+              "; all builds differ from vanilla only in their intended property and pass the kit-wide rules"))
     return 0 if ok else 1
 
 
