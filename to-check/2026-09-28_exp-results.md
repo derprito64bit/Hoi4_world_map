@@ -53,6 +53,7 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | Build | Result with -debug |
 |---|---|
 | EXP-02-1200 (23:06) | **Loads and plays**, but error.log: `Province 2972 has TOO LARGE BOX`, `Province 8337 has TOO LARGE BOX`; `prov 8337 stack 19/20 Ship in port … is too far away from center (dist 164 4)` → TOO LARGE BOX is a **non-fatal warning**, but it disturbs unit/ship placement. A 1200-px 1-px strip triggers it; vanilla 280×115 doesn't → threshold between 280 and 1200 px of width → re-run 600 and 300 with -debug |
+| EXP-03-20k (2026-09-30 07:53) | Loads, plays. **EXP-04 answered**: `map.cpp:1842 Province 19998 has only 6 pixels around … Should have at least 8`, the same for 19999 (7 px) **and for 20000 (8 px)** → the engine logs provinces of ≤ 8 px (the define 8 is treated as a strict minimum). Non-fatal. Also many `provincegraphics.cpp … stack N Moving … is too far away from center (… prov <child>)` lines: unit-stack positions of split parents sit far from the new children (a kit artefact of EXP-03, relevant to P10: every unitstack must lie in its own province near its centre) |
 | EXP-02-600 (2026-09-30 07:24) | Loads, plays. error.log: **no TOO LARGE BOX**; only `pdxmapborders.cpp: One-pixel province color found at 4770, 1029` (a strip fragment) → **for a 1-px strip the threshold lies between 600 and 1200 px of width**. EXP-02-300 and strip-full re-runs skipped: they add nothing (300 < 600 is clean; strip-full > 1200 triggers) |
 
 ## Region-centre model status (2026-09-29)
