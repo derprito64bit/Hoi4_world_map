@@ -9,7 +9,7 @@ enforced by config rather than prose, no extra personas without a distinct job.
 ## 1. Roster
 | Agent | Model | Writes (hook-enforced) | Job | May call |
 |---|---|---|---|---|
-| **overwatch** (main session: `claude --agent overwatch`) | opus, effort high | `docs/logs/**`, `docs/board/work_units.json`, `docs/OPEN_QUESTIONS.md`, `to-check/**` | plans work units, dispatches, runs the loop, merges to `main`, stops at owner gates | all below |
+| **overwatch** (main session: `claude --agent overwatch`) | opus, effort high | `docs/logs/**`, `docs/board/work_units.json`, `docs/OPEN_QUESTIONS.md`, `to-check/**`; plus owner-approved edits to `CLAUDE.md`, `docs/PROJECT_SPEC.md`, `docs/AGENT_SYSTEM.md`, `docs/prompts/**`, `.claude/skills/**`, `.claude/agents/**` | plans work units, dispatches, runs the loop, merges to `main`, stops at owner gates | all below |
 | **researcher** | sonnet | `data/research/**` | finds + extracts primary evidence, tiered, with falsification attempts | — |
 | **state-builder** (worktree) | sonnet | `data/states/**`, `data/provenance/**`, `data/research/**`, `data/countries/**` | one country/region per WU: geometry, splits/merges, attributes, provenance | researcher |
 | **pipeline-engineer** (worktree) | opus | `tools/**`, `tests/**`, `requirements.txt`, `data/README.md`, `data/manifest.csv`, `.gitignore` | all generator code; the only code writer | — |
@@ -31,6 +31,7 @@ Aliases (`opus`, `sonnet`, `haiku`) resolve to the current generation; pin full 
 
 Hard enforcement (not prompts):
 - `.claude/settings.json` → PreToolUse hook `.claude/agentops/scope_guard.py` blocks Write/Edit outside each agent's scope (`.claude/agentops/scopes.json`), blocks hand edits of generated `mod/**` for everyone, and blocks subagents from editing `.claude/**`, `CLAUDE.md`, the spec and prompts.
+- Overwatch's project-file access is granted via `agent_exceptions` in `scopes.json` (owner decision 2026-09-30); `.claude/agentops/**` and `.claude/settings.json` stay owner-only.
 - Files created through Bash are caught at merge: `python .claude/agentops/wu_check.py diff <WU>` must pass before overwatch merges.
 - Concurrency ≤ 6 subagents, spawn depth ≤ 2 (settings env).
 

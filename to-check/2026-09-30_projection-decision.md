@@ -29,6 +29,7 @@ Follows `2026-09-28_exp-results.md` (in-game results EXP-01..09). Evidence: `doc
 | ID | Check | Who | Status |
 |---|---|---|---|
 | CHK-019 | Look at the P00d preview images (coastlines + graticule, a distortion heat map, a key-place table) for λb 60/90/120 vs plain Equal Earth and pick one | owner | OPEN (after P00d) |
+| CHK-020 | Overwatch project-file access granted (scopes.json agent_exceptions; agentops/settings stay owner-only) | owner/plain session | DONE (2026-09-30, merge of chore/overwatch-scope) |
 
 ## Engine rules from P00b that stay valid for any projection
 - Province bbox: width < ~600–1200 px and height < ~174–300 px, else TOO LARGE BOX (non-fatal, misplaces units); spec 250/180 is safe.
