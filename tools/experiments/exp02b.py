@@ -1,12 +1,21 @@
 """EXP-02b: larger province-size variants of EXP-02 (owner request after EXP-02-300/600/1200 loaded).
 
-Four builds (owner run order: strip-full, block-400, block-800-sea, block-800-land),
-each changing one property against vanilla 1.19.3. block-400 keeps one land and one
-sea host in one build; block-800 is split into a sea-only and a land-only build so
-the 800-px sea box is not confounded by the land host's ~1000 neighbours. Every
-build records its side effects (host neighbour counts vs vanilla's maximum,
-donors, enclaves, moved lines, newly non-contiguous states and strategic regions)
-in the build info and prints them in its README (``side_effects``).
+Two builds (both run in game on 2026-09-29), each changing one property against vanilla
+1.19.3. Every build records its side effects (host neighbour counts vs vanilla's maximum,
+donors, enclaves, moved lines, newly non-contiguous states and strategic regions) in the
+build info and prints them in its README (``side_effects``).
+
+Retired in P00b-f6: ``EXP-02b-block-800-sea`` / ``-800-land`` (``RETIRED``). Their donor
+remnants would cut 8 naval strategic regions in pieces (the fatal MAP_ERROR that stopped
+block-400); no clean filled square of 400 px or more exists on the vanilla map
+(``boxfill.find_rects``: some province always lies wholly inside and would stay as an
+enclave); and every TOO LARGE BOX rule that fits the observations already predicts the line
+for an 800 x 800 box. The threshold probes are EXP-02c.
+
+block-400 was REJECTED in game (2026-09-29 23:02, -debug): TOO LARGE BOX for both hosts, and
+the map was refused because its sea remnants cut North East Pacific and Central North Pacific
+in pieces (``boxfill.fractioned_naval`` reproduces both regions and every separated province).
+It stays buildable so the record can be reproduced; its README says not to run it again.
 
 * ``EXP-02b-strip-full`` -- the EXP-02 strip method (``exp02.widen``) pushed to the
   widest span the map allows: the sea strip runs through the all-sea rows at the
@@ -18,8 +27,8 @@ in the build info and prints them in its README (``side_effects``).
   and weather positions, so positions on strip pixels are relocated into their
   own province (as in the block builds) instead of being avoided. Widths were
   found with ``widest_strip`` (5,629 px, the non-seam maximum, has no valid host).
-* ``EXP-02b-block-400`` / ``-800-sea`` / ``-800-land`` -- a province becomes a
-  solid, filled square of 400 x 400 / 800 x 800 px. The host province lies inside
+* ``EXP-02b-block-400`` -- a land and a sea province each become a
+  solid, filled square of 400 x 400 px. The host province lies inside
   the square; it takes over the pixels of every *eligible donor* inside the
   square (same kind, not protected, see ``protected_ids``). A donor that also
   extends outside the square keeps its outside part; a donor whose outside part
@@ -76,10 +85,8 @@ KIND_NAME = {LAND: "land", SEA: "sea"}
 # widest valid strips on vanilla 1.19.3 (search: ``widest_strip``); the build fails loudly if one no longer fits
 STRIP_WIDTH = {SEA: 5625, LAND: 2188}
 # block squares on vanilla 1.19.3: size -> kind -> (top row, left column, host province); search: ``find_sites``
-# (land 400: Siberia, away from the map edge; land 800: the only non-sea 800-px square is in inner Eurasia and
-# holds lakes and many railway provinces, which stay whole; sea 400: North Pacific; sea 800: South Pacific)
-BLOCKS = {400: {LAND: (33, 4513, 1852), SEA: (257, 289, 2755)},
-          800: {LAND: (113, 3785, 12686), SEA: (925, 473, 4497)}}
+# (land 400: Siberia, away from the map edge; sea 400: North Pacific). The 800-px squares were retired in P00b-f6.
+BLOCKS = {400: {LAND: (33, 4513, 1852), SEA: (257, 289, 2755)}}
 REMNANT = 9            # px a donor keeps when (almost) all of it lies inside the square (>= MIN_PX)
 XFIX_SLACK = 4         # extra px per donor the X-crossing repair may leave inside the square
 BBOX_BASELINE = 7855   # vanilla's own 280-px land province: never a donor or host
@@ -564,14 +571,17 @@ def _ids(xs, limit: int = 40) -> str:
 
 
 # ------------------------------------------------------------------ experiment
-# block builds: suffix -> (square size, kinds); block-800 is split so each 800-px host is tested on its own
-BLOCK_BUILDS = {"block-400": (400, (LAND, SEA)), "block-800-sea": (800, (SEA,)), "block-800-land": (800, (LAND,))}
-RUN_ORDER = ["EXP-02b-strip-full", "EXP-02b-block-400", "EXP-02b-block-800-sea", "EXP-02b-block-800-land"]
-ORDER_NOTE = ("Run order for the four EXP-02b builds: strip-full, block-400, block-800-sea, block-800-land. Run them "
-              "one at a time in this order, because it separates the effects best: "
-              "strip-full (very wide but thin, like EXP-02-1200 that loaded), block-400 (filled 400 px, land and sea), "
-              "block-800-sea (filled 800 px, sea only, a few hundred neighbours), block-800-land (filled 800 px, land "
-              "only, about 1000 neighbours). Report every build, also after one fails.")
+# block builds: suffix -> (square size, kinds). block-800-sea / -land were retired in P00b-f6 (module doc).
+BLOCK_BUILDS = {"block-400": (400, (LAND, SEA))}
+RUN_ORDER = ["EXP-02b-strip-full", "EXP-02b-block-400"]
+RETIRED = ("EXP-02b-block-800-sea", "EXP-02b-block-800-land")
+ORDER_NOTE = ("The two EXP-02b builds, strip-full and block-400, were both run on 2026-09-29. strip-full is very "
+              "wide but thin, like EXP-02-1200; block-400 is filled 400 px, land and sea. block-800-sea and "
+              "block-800-land were retired (P00b-f6); the TOO LARGE BOX threshold probes are EXP-02c.")
+REJECTED_NOTE = ("DO NOT RUN AGAIN: this build was run on 2026-09-29 and REJECTED. With -debug the game logged TOO "
+                 "LARGE BOX for both hosts and refused the map with 'MAP_ERROR: Naval strategic region ... is "
+                 "fractioned' (North East Pacific, Central North Pacific): the donor remnants cut those regions in "
+                 "pieces. It is kept only so the record can be reproduced; run the EXP-02c builds instead.")
 CANNOT_02B = {
     "size": ("the exact threshold: each EXP-02b build tests one size; a build that loads shows that this size works, "
              "a build that fails does not by itself locate the limit, because its host also has far more neighbours "
@@ -736,6 +746,7 @@ class Exp02b(Experiment):
             steps = ["If the main menu appears: start a new game with any country and let it run for 2-3 days.",
                      f"Optional: look at {' and '.join(where)}: one big square with small enclaves (the donor "
                      "remnants, a few pixels each) in it is expected."]
+            notes.insert(0, REJECTED_NOTE)
             notes.append("Side effect, on purpose: the donor remnants are enclaves inside the host, so their "
                          "neighbours changed (a remnant can only be reached through the host), and the states and "
                          "strategic regions listed above now have a piece cut off. The normal game already has 30 "

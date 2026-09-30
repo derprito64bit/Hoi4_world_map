@@ -240,11 +240,17 @@ def test_fresh_build_passes_check(ctx, built, bid):
     assert exp.check(ctx, bid, out) == []
 
 
-def test_selector_picks_the_four_new_builds_in_run_order(ctx):
+def test_selector_picks_the_remaining_builds_in_run_order(ctx):
+    """P00b-f6 retired block-800-sea / -land (they cut naval regions in pieces; no clean 800-px square exists)."""
+    from experiments.exp02b import RETIRED
     from experiments.registry import resolve
-    assert [b for _, b in resolve(ctx, "EXP-02b")] == ["EXP-02b-strip-full", "EXP-02b-block-400",
-                                                       "EXP-02b-block-800-sea", "EXP-02b-block-800-land"]
+    assert [b for _, b in resolve(ctx, "EXP-02b")] == ["EXP-02b-strip-full", "EXP-02b-block-400"]
     assert "EXP-02b-strip-full" not in [b for _, b in resolve(ctx, "EXP-02")]
+    everything = [b for _, b in resolve(ctx, "all")]
+    assert not set(RETIRED) & set(everything)
+    for b in RETIRED:
+        with pytest.raises(SystemExit):
+            resolve(ctx, b)
 
 
 @pytest.mark.parametrize("bid", ["EXP-02b-strip-full", "EXP-02b-block-400"])
@@ -253,10 +259,11 @@ def test_readme_states_side_effects(ctx, built, bid):
     r = (out / "README.txt").read_text(encoding="utf-8")
     for part in ("If this build fails, it does NOT by itself show a size limit", "neighbours",
                  "the most-connected province in the normal game touches 23", "donor provinces lost pixels",
-                 "position lines moved", "strategic regions", "strip-full, block-400, block-800-sea, block-800-land",
-                 "each EXP-02b build tests one size"):
+                 "position lines moved", "strategic regions", "strip-full and block-400, were both run",
+                 "block-800-sea and block-800-land were retired", "each EXP-02b build tests one size"):
         assert part in r, part
     assert "only the three sizes tested" not in r                       # no reused EXP-02 limitation
+    assert ("DO NOT RUN AGAIN" in r) == (bid == "EXP-02b-block-400")      # the rejected build says so first
 
 
 def test_constants_still_valid_on_this_game(ctx):

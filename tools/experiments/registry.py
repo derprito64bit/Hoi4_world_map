@@ -6,13 +6,14 @@ def experiments():
     from .exp01 import Exp01
     from .exp02 import Exp02
     from .exp02b import Exp02b
+    from .exp02c import Exp02c
     from .exp03 import Exp03
     from .exp05 import Exp05
     from .exp06 import Exp06
     from .exp07 import Exp07
     from .exp08 import Exp08
     from .exp09 import Exp09
-    exps = [Exp01(), Exp02(), Exp02b(), Exp03(), Exp05(), Exp06(), Exp07(), Exp08(), Exp09()]
+    exps = [Exp01(), Exp02(), Exp02b(), Exp02c(), Exp03(), Exp05(), Exp06(), Exp07(), Exp08(), Exp09()]
     return sorted(exps, key=lambda e: e.priority)
 
 
