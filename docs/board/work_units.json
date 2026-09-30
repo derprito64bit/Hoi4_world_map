@@ -166,10 +166,10 @@
       "depends_on": [
         "P00b-f6"
       ],
-      "status": "in_progress",
+      "status": "done",
       "branch": "wu/P00b-f7",
-      "attempts": 1,
-      "notes": "owner EXP-09a run 2026-09-30 15:45"
+      "attempts": 2,
+      "notes": "owner EXP-09a run 2026-09-30 15:45; r1 e249f0b review 0/1/4 (install case-insensitive bypass); r2 f1d5138 verified by overwatch on main -> merged"
     }
   ]
 }
