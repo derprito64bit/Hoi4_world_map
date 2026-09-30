@@ -31,7 +31,8 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-08-6144x2560 | — | ready. KNOWN RISK region 178 (dy 0): a crash at hoi4.exe+0x15A4CDC = region-centre issue, elsewhere = canvas size | — | pending |
 | EXP-09a–e | — | ready (redesigned: 444 regions, 14 single-province regions = rival causes if it fails) | — | pending |
 | EXP-05-3to1 (trees.bmp 1800×600) | 2026-09-29 21:14 | the owner compared with vanilla (no screenshots saved): same forest spots, runs fine | `system.log`: EXP-05-3to1 active; error.log: 0 tree lines; no new crash dump | **OK** |
-| EXP-06, EXP-07 | — | — | — | pending |
+| EXP-06 (region 113 "South Central Pacific", 39 sea provinces → lakes) | 2026-09-30 11:36 | Loads, plays. **Looks like water.** Not a sea zone: no naval-range overlay, the owner says it seems treated as land. **Route lines are drawn straight through the block (no detour), but a fleet gets stuck as soon as it enters a block tile** | system.log: EXP-06 active; game.log: 13,414 provinces, launched; error.log: nothing from the mod | **FAIL as off-globe filler**: the pathfinder counts lake tiles as passable while movement stops there → ships (incl. AI) can get trapped |
+| EXP-07 | — | — | — | pending |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
@@ -70,6 +71,7 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 ## Questions for the owner
 | ID | Question | Options | Status |
 |---|---|---|---|
+| Q-010 | EXP-06: lake provinces next to sea trap fleets (routes go through, fleets stuck). What should the off-globe area be? | To be proposed after EXP-09 (same idea on the real canvas) and a short design study. Candidates: (A) filler lakes never touch sea: a buffer of impassable land or wasteland along the globe edge; (B) filler as impassable land provinces/states (the globe edge becomes a coast); (C) no filler provinces: our edge lands on the canvas border where possible and the rest is ocean; (D) A with adjacency rules if the engine allows blocking sea↔lake links. Overwatch will not choose; owner decision (parameter/method) | OPEN |
 | Q-009 | How do ships cross the map's left/right edge where the Equal Earth outline curves away (Bering Sea, the Arctic)? `adjacencies.csv` links can't do it (EXP-01). | **A (recommended):** real sea corridors — draw a band of sea provinces through the off-globe filler so the water pixels touch across the wrap edge. The engine then measures the distance the short way, as vanilla's own Pacific wrap does. The corridor is visible in the off-globe area; P14/EXP-09 shading can soften it. Uses the same mechanism as vanilla's own Pacific wrap (no separate engine test needed). **B:** no crossing at high latitudes: ships go around via the equator, where the two edges meet naturally (Bering and Arctic routes become very long). **C:** move the seam (the central meridian lon0 10.9) so it crosses as little high-latitude sea as possible; the Arctic is cut anyway, so C reduces the problem but does not remove it. | OPEN |
 
 ## Open owner items
