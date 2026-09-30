@@ -27,8 +27,11 @@ KNOWN_FRACTIONED = {
         }},
     "EXP-08-6144x2560": {
         "why": "concluded: the 512 padding columns at the right end the wrap contact of vanilla's seam-crossing "
-               "naval regions; the game logged Bering Sea, West Emperor Chain, North Emperor Chain, ... "
-               "(2026-09-30 15:41; the full error.log was not kept)",
+               "naval regions; PREDICTED by the f7 rule, not a game record: the game refused the map and logged "
+               "only the names Bering Sea, West Emperor Chain, North Emperor Chain, ... (2026-09-30 15:41; the "
+               "full error.log was not kept), the lowest 3 of these 7 region ids (88, 95, 96); the other 4 regions "
+               "and every province list below are the rule's own output (a regression pin)",
+        # rule predictions (region ids 88, 95, 96, 97, 112, 178, 180), not transcribed from any log
         "regions": {
             "Bering Sea": [2526, 2556, 2607, 2656, 2675, 2682, 2700, 2706, 2725, 2748, 2771, 2795, 2820, 2874,
                            2991, 3046, 3052, 3248, 3450, 3591, 3642, 3836, 4043, 5356, 5378, 5782, 5808, 5834,

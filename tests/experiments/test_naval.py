@@ -33,28 +33,52 @@ def voronoi(seed, H=40, W=60, k=25):
 
 
 # ---------------------------------------------------------------- grow_regions keeps every region one piece
-def test_grow_regions_keeps_regions_connected_where_the_old_grouping_cut_them():
-    cut = fixed = 0
+# Two pinned 40 x 60 maps (Voronoi cells of these 25 (row, col) sites, IDs 1..25 in site order; no RNG) on which
+# the pre-f7 grouping (max_members 8) returns exactly the listed region in two pieces.
+PINNED_SPLITS = [
+    ([(30, 35), (0, 4), (27, 37), (28, 23), (32, 10), (13, 17), (20, 46), (37, 56), (14, 53), (4, 29), (5, 42),
+      (26, 10), (30, 4), (32, 15), (7, 48), (27, 2), (29, 22), (39, 16), (32, 4), (30, 21), (26, 1), (11, 33),
+      (39, 41), (12, 5), (6, 53)], [8, 9, 15, 22, 25]),
+    ([(38, 8), (39, 11), (25, 41), (21, 18), (10, 51), (18, 0), (10, 56), (17, 39), (36, 14), (26, 17), (35, 11),
+      (2, 50), (10, 55), (38, 12), (7, 2), (17, 21), (18, 11), (30, 33), (38, 48), (1, 50), (2, 16), (39, 29),
+      (39, 57), (39, 56), (35, 59)], [4, 12, 13, 15, 16, 21]),
+]
+
+
+def sites_map(sites, H=40, W=60):
+    pts = np.asarray(sites)
+    yy, xx = np.mgrid[:H, :W]
+    d = (yy[..., None] - pts[:, 0]) ** 2 + (xx[..., None] - pts[:, 1]) ** 2
+    return (d.argmin(-1) + 1).astype(np.int32)
+
+
+def _assert_good(pid, groups):
+    ids = sorted(np.unique(pid).tolist())
+    nb, bx = neighbours(pid, ids), Boxes(pid)
+    assert sorted(i for g in groups for i in g) == ids
+    assert all(connected(g, nb) and bx.ok(g) for g in groups)
+
+
+@pytest.mark.parametrize("sites,split", PINNED_SPLITS)
+def test_grow_regions_keeps_the_region_whole_that_the_old_grouping_cut(sites, split):
+    pid = sites_map(sites)
+    ids = sorted(np.unique(pid).tolist())
+    nb = neighbours(pid, ids)
+    old = grow_regions(pid, ids, max_members=8, keep_connected=False)
+    assert [g for g in old if not connected(g, nb)] == [split]                  # the pre-f7 defect, pinned
+    new = grow_regions(pid, ids, max_members=8)
+    _assert_good(pid, new)
+    assert new == grow_regions(pid, ids, max_members=8)                         # deterministic
+
+
+def test_grow_regions_never_cuts_a_region_on_irregular_maps():
     for seed in range(200):
         pid = voronoi(seed)
-        ids = sorted(np.unique(pid).tolist())
-        nb = neighbours(pid, ids)
         try:
-            old = grow_regions(pid, ids, max_members=8, keep_connected=False)
-        except KitError:
-            old = None
-        try:
-            new = grow_regions(pid, ids, max_members=8)
+            new = grow_regions(pid, sorted(np.unique(pid).tolist()), max_members=8)
         except KitError:
             continue
-        bx = Boxes(pid)
-        assert sorted(i for g in new for i in g) == ids
-        assert all(connected(g, nb) and bx.ok(g) for g in new), seed
-        assert new == grow_regions(pid, ids, max_members=8)                     # deterministic
-        if old is not None and any(not connected(g, nb) for g in old):
-            cut += 1                                                            # the old grouping cut one here
-            fixed += 1
-    assert cut >= 3 and fixed == cut    # the pre-f7 grouping (drop the farthest member) cuts regions on such maps
+        _assert_good(pid, new)
 
 
 def test_connected_helper():
@@ -168,10 +192,16 @@ def test_block400_and_exp08_findings_match_the_documented_record(ctx, tmp_path):
         probs, notes = naval.check_build(ctx, exp, bid, out)
         assert probs == [] and len(notes) == (1 if want else 0)
         shutil.rmtree(out)
-    # the names the game logged for EXP-08-6144 (2026-09-30 15:41: "Bering Sea, West Emperor Chain, North
-    # Emperor Chain, ...") are the first three by region id
-    assert {"Bering Sea", "West Emperor Chain", "North Emperor Chain"} <= set(KNOWN_FRACTIONED["EXP-08-6144x2560"]
-                                                                              ["regions"])
+    # EXP-08-6144: the pinned lists are the rule's PREDICTION (regression pin). Only the names the game logged are a
+    # record (2026-09-30 15:41: "Bering Sea, West Emperor Chain, North Emperor Chain, ..."): they are exactly the 3
+    # lowest region ids of the 7 predicted regions, in that order
+    known = KNOWN_FRACTIONED["EXP-08-6144x2560"]
+    assert "PREDICTED" in known["why"] and "not a game record" in known["why"]
+    rid_of = {name: rid for rid, name in naval.loc_names(None, ctx.game).items()}
+    by_id = sorted(rid_of[name] for name in known["regions"])
+    assert by_id == [88, 95, 96, 97, 112, 178, 180]
+    assert [naval.loc_names(None, ctx.game)[r] for r in by_id[:3]] == ["Bering Sea", "West Emperor Chain",
+                                                                       "North Emperor Chain"]
     assert KNOWN_FRACTIONED["EXP-02b-block-400"]["regions"] == {
         "North East Pacific": [2378, 2404, 2452, 2503, 2551, 2627, 2650, 2676, 2701, 2779],
         "Central North Pacific": [263, 460, 644, 2144, 2252, 2278, 2305, 8583, 9029, 9086]}

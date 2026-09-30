@@ -10,7 +10,9 @@ The only file ever written or deleted is ``$HOI4_USER_DIR/mod/p00b_<ID>.mod``
 ``build/experiments/<ID>``). Every other destination is refused (paths are
 resolved, symlinks included, and must stay inside ``$HOI4_USER_DIR/mod``).
 dlc_load.json and playsets are never touched: tick the mod in the launcher.
-Retired and concluded builds (``registry.RETIRED`` / ``registry.CONCLUDED``) are refused.
+Retired and concluded builds (``registry.RETIRED`` / ``registry.CONCLUDED``) are refused in any
+letter case; any other ID must be a registered build id exactly (``build.py list``), and its build
+folder on disk must carry exactly that name: a case variant of an ID is refused, never normalised.
 
 The Paradox launcher rewrites these files (drops comments, reorders keys, no
 final newline), so an existing file counts as written by this kit only when
@@ -28,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from experiments.common import BUILD_ROOT, KitError, is_within, user_dir  # noqa: E402
+from experiments.common import BUILD_ROOT, REPO_ROOT, KitError, is_within, user_dir  # noqa: E402
 from experiments.registry import CONCLUDED, RETIRED  # noqa: E402
 
 BUILD_ID = re.compile(r"^EXP-\d\d[A-Za-z0-9-]{0,24}$")
@@ -161,16 +163,45 @@ def is_kit_file(dest: Path, build_id: str, user: Path, build_root: Path = BUILD_
 
 
 # ---------------------------------------------------------------- install / uninstall
+def registered_ids() -> frozenset:
+    """Every build id the kit lists (``registry.resolve(..., 'all')``; retired ones are not listed)."""
+    from experiments.base import Ctx
+    from experiments.registry import resolve
+    return frozenset(b for _, b in resolve(Ctx(game=None, vanilla=None, repo_root=REPO_ROOT), "all"))
+
+
+def refusal(build_id: str) -> str | None:
+    """Why ``build_id`` must never be installed, compared case-folded (Windows paths ignore case, so
+    'EXP-08-6144X2560' is the folder of the concluded 'EXP-08-6144x2560'); None if it is not refused."""
+    fold = build_id.casefold()
+    for b in RETIRED:
+        if b.casefold() == fold:
+            return f"{b} is retired (see tools/experiments/registry.py RETIRED); it must not be run"
+    for b, why in CONCLUDED.items():
+        if b.casefold() == fold:
+            return (f"{b} is concluded ({why}; see tools/experiments/registry.py CONCLUDED); "
+                    "it must not be run again")
+    return None
+
+
 def install(build_id: str, user: Path, build_root: Path = BUILD_ROOT, dry_run: bool = False) -> Path:
-    if build_id in RETIRED:                     # a stale folder may still exist below build/experiments
-        raise KitError(f"{build_id} is retired (see tools/experiments/registry.py RETIRED); it must not be run")
-    if build_id in CONCLUDED:                   # P00b-f7: the owner run is done and recorded
-        raise KitError(f"{build_id} is concluded ({CONCLUDED[build_id]}; see tools/experiments/registry.py "
-                       "CONCLUDED); it must not be run again")
+    why = refusal(build_id)                     # a stale folder may still exist below build/experiments
+    if why:
+        raise KitError(why)
+    ids = registered_ids()
+    if build_id not in ids:                     # P00b-f7 r2: exact ids only, a case variant is refused
+        near = sorted(b for b in ids if b.casefold() == build_id.casefold())
+        raise KitError(f"{build_id!r} is not a registered build id"
+                       + (f" (did you mean {near[0]!r}? ids are case-sensitive)" if near else "")
+                       + "; see tools/experiments/build.py list")
     dest = target_path(user, build_id)
     build_dir = Path(build_root) / build_id
     if not is_within(build_dir, build_root):
         raise KitError("build folder outside the build root")
+    if Path(build_root).is_dir():               # the folder on disk must carry exactly this name (case included)
+        on_disk = sorted(p.name for p in Path(build_root).iterdir() if p.name.casefold() == build_id.casefold())
+        if on_disk and on_disk != [build_id]:
+            raise KitError(f"build folder name {on_disk} is not exactly {build_id!r}; rebuild with build.py")
     text = launcher_text(build_dir)
     if dest.exists() or dest.is_symlink():
         why = kit_file_problem(dest, build_id, user, build_root)

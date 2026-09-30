@@ -262,7 +262,9 @@ def fractioned_parts(pid: np.ndarray, province_region: dict, types: np.ndarray) 
     P00b-f7: the engine keeps the piece of the lowest ID, not the largest piece: in EXP-09a's region
     "extra sea 37" it listed the 18-province piece and kept the 6-province piece of 14455. All 8 logged
     regions (EXP-02b-block-400: 2, EXP-09a: 6) fit this; in each of them the lowest sea ID is also the
-    first one listed in the region file, so "the piece of the first listed province" fits equally."""
+    first one listed in the region file, so "the piece of the first listed province" fits equally: the
+    printed IDs are verified only for region files that list their provinces ascending (whether a region
+    is fractioned does not depend on it)."""
     from .mapdata import adjacency_pairs
     groups = naval_regions(province_region, types)
     bad = fractioned_naval(pid, province_region, types)

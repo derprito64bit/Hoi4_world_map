@@ -10,9 +10,13 @@ strategic region <name> is fractioned! The following provinces are separated fro
 (fatal: singleplayer cannot start). The rule is P00b-f6's (``boxfill.fractioned_naval`` /
 ``boxfill.fractioned_parts``, the one shared implementation): only the region's ``sea`` members
 count, they must be one piece by 4-neighbour pixel contact across the wrap seam, adjacencies.csv
-links do not join them, and the separated provinces are those outside the largest piece. It
-reproduces every such line the game has logged (EXP-02b-block-400, EXP-09a; tests) and passes
-vanilla 1.19.3 (98 naval regions).
+links do not join them, and the separated provinces are those outside the piece holding the
+region's lowest sea ID (NOT the largest piece: EXP-09a region 37 kept its 6-province piece of
+14455 and listed the 18 others, P00b-f7). In every logged region the lowest sea ID is also the
+first one listed in the region file (generated files list IDs ascending), so "the piece of the
+first listed province" fits the evidence equally; only the printed IDs depend on that, never
+whether a region is fractioned. It reproduces every such line the game has logged
+(EXP-02b-block-400, EXP-09a; tests) and passes vanilla 1.19.3 (98 naval regions).
 
 A build is read layered over the vanilla install ($HOI4_GAME_DIR): provinces.bmp and
 definition.csv from the build if present, region files by name (a build file replaces the
