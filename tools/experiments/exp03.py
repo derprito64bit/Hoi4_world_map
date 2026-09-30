@@ -35,7 +35,21 @@ bisect variants were added:
                   unsafe region is left unsplit and the plan is re-run (same count)
 * EXP-03-div0     positive control: vanilla plus the pieces of ONE land province,
                   chosen so that exactly one region divides by zero; expected to
-                  crash at the same code address
+                  crash at the same code address. It LOADED in game (2026-09-29).
+
+P00b-f5 (the div0 surprise; regioncentre.py explains it with 2-px-grid engine boxes,
+under which div0's region 193 has divisor +1). Three probes (owner run order: 191only, div0c,
+div0b):
+
+* EXP-03-191only  locality: vanilla plus ONLY the 24k cuts of parents inside region 191
+                  (same pieces, same pixels; new IDs renumbered contiguously after the
+                  vanilla ones, in 24k ID order), dependent files made consistent as above.
+                  Region 191's member boxes are identical to 24k's (pinned signature).
+* EXP-03-div0b    vanilla plus the pieces of ONE land province, chosen so that one region
+                  divides by zero under the old conventions AND under the grid model.
+* EXP-03-div0c    (r2) vanilla plus the pieces of ONE land province, chosen so that one
+                  region divides by zero ONLY under the grid model (old dx != 0): the
+                  sharpest test of the grid rule.
 """
 from __future__ import annotations
 
@@ -56,17 +70,29 @@ from .mapdata import (LAND, SEA, Definition, adjacency_ids, adjacency_links, adj
                       fix_x_crossings, game_xz, height_at, interior_points, new_colors, pid_from_rgb, rgb_from_pid,
                       x_crossings)
 from .positions import PER_COAST, PER_LAND, PER_PROVINCE, join_lines, position_pixels, split_lines
-from .regioncentre import guard_failures, pixel_boxes, region_centre, region_centres
+from .regioncentre import (DUMP_MEAN, DUMP_RECT, DUMP_REGION, guard_failures, pixel_boxes, region_centre,
+                           region_centres)
 
 TARGETS = {"16k": 16000, "20k": 20000, "24k": 24000, "30k": 30000}
 FIX_VARIANT = "24k-fix"                 # 24,000 provinces with the region-centre guard
 TRAP_VARIANT = "div0"                   # positive control: vanilla + one split province -> region centre / 0
-VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None}
+LOCAL_VARIANT = "191only"               # P00b-f5: vanilla + only the 24k cuts inside region 191
+LOCAL_SOURCE = "24k"
+LOCAL_REGION = DUMP_REGION              # 191 Northern Norway
+# member-box signature of region 191 in EXP-03-24k (RegionCentre.signature); 191only must reproduce it
+LOCAL_SIGNATURE = "9607ba7cd8a9375c"
+TRAP2_VARIANT = "div0b"                 # P00b-f5: one split province, divisor 0 under the old AND the grid model
+TRAP3_VARIANT = "div0c"                 # P00b-f5 r2: one split province, divisor 0 ONLY under the grid model
+TRAPS = (TRAP_VARIANT, TRAP2_VARIANT, TRAP3_VARIANT)
+PROBES = (FIX_VARIANT, TRAP_VARIANT, LOCAL_VARIANT, TRAP2_VARIANT, TRAP3_VARIANT)
+F5_PROBES = (LOCAL_VARIANT, TRAP3_VARIANT, TRAP2_VARIANT)      # owner run order (readme_probe)
+VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None, LOCAL_VARIANT: None, TRAP2_VARIANT: None,
+            TRAP3_VARIANT: None}
 # EXP-03-24k is kept byte-identical as the record of the in-game crash (2026-09-29, dump: region 191
-# Northern Norway), so --check requires it to stay unsafe. Revisit this entry when the owner reports the
-# 24k-fix / div0 bisect: if div0 crashes and 24k-fix loads, keep it as the confirmed reproducer; otherwise
-# the model is incomplete and this entry (and regioncentre.py) must be corrected first.
-KNOWN_UNSAFE = {"24k": [191]}
+# Northern Norway), so --check requires it to stay unsafe. The bisect (2026-09-29): 24k-fix loaded and div0
+# loaded too. P00b-f5 added the 2-px-grid model (regioncentre.py): 191 stays unsafe in 24k and in 191only;
+# div0's region 193 stays flagged by the old rule although it loaded (the guard is the conservative union).
+KNOWN_UNSAFE = {"24k": [191], LOCAL_VARIANT: [191]}
 # Builds seen loading in game (2026-09-28/29), pinned by mod_tree_sha256() of the bytes that were run:
 # region-centre findings there are evidence, never a --check failure. None of them has one under the
 # conservative model (P00b-f3 r3). A rebuild with different bytes gets no exemption.
@@ -320,6 +346,14 @@ def mod_tree_sha256(out: Path) -> str:
     return hashlib.sha256(json.dumps(files, sort_keys=True).encode()).hexdigest()
 
 
+def model_values(c) -> dict:
+    """The region-centre model's numbers for one region (README / build meta)."""
+    return {"members": c.n, "mean": list(c.mean), "rect": list(c.rect), "dx": c.dx, "dy": c.dy,
+            "fallback_all": c.fallback_all, "mean_g2": list(c.mean_g2), "rect_g2": list(c.rect_g2),
+            "fallback_g2": c.fallback_g2, "fallback_g2_strict": c.fallback_g2_strict, "dx_g2": c.dx_g2, "unsafe_old": c.unsafe_old, "crash_g2": c.crash_g2,
+            "signature": c.signature}
+
+
 def centres_of(pid: np.ndarray, root: np.ndarray, region_of: np.ndarray) -> dict:
     return region_centres(pid, region_members(root, region_of))
 
@@ -378,10 +412,31 @@ def _is_trap(c) -> bool:
     return c.fallback_all and c.dx == 0 and not c.seam
 
 
-def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
-    """Yield (region, province, pieces) whose split alone recreates the observed dx == 0 crash (model only).
+def _is_trap_both(c) -> bool:
+    """div0b (P00b-f5): the old condition (``_is_trap``) AND the grid model's predicted crash."""
+    return _is_trap(c) and c.crash_g2
 
-    Regions that already take the fallback are searched first, by |dx|; wrapping regions are skipped.
+
+def _is_trap_grid_only(c) -> bool:
+    """div0c (P00b-f5 r2): grid dx 0 with the mean outside every grid box even under the inclusive test as
+    read, while the old model sees no division by zero at all (old dx != 0 and not ``unsafe_old``)."""
+    return c.crash_g2 and c.fallback_g2 and not c.unsafe_old and c.dx != 0
+
+
+def _takes_fallback(c) -> bool:
+    return c.fallback
+
+
+def _takes_any_fallback(c) -> bool:
+    return c.fallback or c.fallback_g2
+
+
+def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD, pred=_is_trap,
+                    include=_takes_fallback):
+    """Yield (region, province, pieces) whose split alone makes ``pred`` true for its region (model only).
+
+    Vanilla regions for which ``include`` holds are searched, by |dx| then ID; wrapping regions are skipped.
+    The defaults are the P00b-f3 div0 search (kept so that EXP-03-div0 stays byte-identical).
     """
     H, W = van_pid.shape
     n0 = len(types)
@@ -389,7 +444,7 @@ def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
     regions = region_members(root, region_of)
     boxes = pixel_boxes(van_pid, n0)
     cs = region_centres(van_pid, regions)
-    order = sorted((c for c in cs.values() if c.fallback and not c.seam), key=lambda c: (abs(c.dx), c.region))
+    order = sorted((c for c in cs.values() if include(c) and not c.seam), key=lambda c: (abs(c.dx), c.region))
     objs = ndimage.find_objects(van_pid + 1)
     area = areas(van_pid, n0)
     for c in order:
@@ -412,21 +467,46 @@ def trap_candidates(van_pid, types, region_of, frozen, min_px: int = MIN_CHILD):
                 for j in range(4):
                     ext[j][p] = pb[0][j]
                 mem = list(ids) + list(range(n0, n0 + k - 1))
-                if _is_trap(region_centre(c.region, mem, tuple(ext), W)):
+                if pred(region_centre(c.region, mem, tuple(ext), W)):
                     yield int(c.region), int(p), k
 
 
-def trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen, min_px: int = MIN_CHILD):
+def trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen, min_px: int = MIN_CHILD,
+               pred=_is_trap, include=_takes_fallback):
     """(pid, root, (region, province, pieces)) for the first model candidate that survives the full pipeline."""
     n0 = len(types)
     observed = vanilla_centres(van_pid, region_of)
-    for rid, p, k in trap_candidates(van_pid, types, region_of, frozen, min_px):
+    for rid, p, k in trap_candidates(van_pid, types, region_of, frozen, min_px, pred, include):
         fz = set(range(1, n0)) - {p}
         pid, root = subdivide(van_pid, types, k - 1, np.arange(n0), keep_pixel, coastal_needed, min_px, frozen=fz)
         cs = centres_of(pid, root, region_of)
-        if guard_failures(cs, observed) == [rid] and _is_trap(cs[rid]):
+        if guard_failures(cs, observed) == [rid] and pred(cs[rid]):
             return pid, root, (rid, p, k)
     raise KitError("no single-province split recreates the region-centre division by zero")
+
+
+def local_split(van_pid: np.ndarray, pid_src: np.ndarray, root_src: np.ndarray, region_of: np.ndarray, region: int):
+    """(pid, root, parents): vanilla plus only those pieces of a subdivided map whose parent is in ``region``.
+
+    ``pid_src`` / ``root_src`` are a subdivide() result on ``van_pid``. Inside the parents' vanilla
+    footprint the pixels are copied from ``pid_src`` unchanged; everywhere else the map stays vanilla.
+    The pieces that do not keep the parent's ID are renumbered contiguously from ``len(region_of)``
+    in their source-ID order.
+    """
+    n0 = len(region_of)
+    kids = np.array([i for i in range(n0, len(root_src)) if region_of[int(root_src[i])] == region], dtype=np.int64)
+    parents = sorted({int(root_src[i]) for i in kids})
+    if not parents:
+        raise KitError(f"region {region}: the source map has no split province there")
+    remap = np.arange(len(root_src), dtype=np.int64)
+    remap[kids] = np.arange(n0, n0 + len(kids))
+    m = np.isin(van_pid, parents)
+    if not np.array_equal(m, np.isin(root_src[pid_src], parents)):
+        raise KitError("the source map is not a refinement of vanilla inside the parents' footprint")
+    pid = van_pid.copy()
+    pid[m] = remap[pid_src[m]].astype(pid.dtype)
+    root = np.concatenate([np.arange(n0, dtype=np.int64), root_src[kids].astype(np.int64)])
+    return pid, root, parents
 
 
 # ------------------------------------------------------------------ dependent files
@@ -504,6 +584,12 @@ class Exp03(Experiment):
         k = self.key(build_id)
         if k == TRAP_VARIANT:
             return "vanilla + one split province, region-centre division by zero (expected CRASH)"
+        if k == LOCAL_VARIANT:
+            return "vanilla + only the 24k cuts in region 191 Northern Norway (locality probe, expected CRASH)"
+        if k == TRAP2_VARIANT:
+            return "vanilla + one split province, division by zero under both box models (expected CRASH)"
+        if k == TRAP3_VARIANT:
+            return "vanilla + one split province, division by zero only under the 2-px grid model (expected CRASH)"
         t = f"{VARIANTS[k]:,} provinces"
         if k == FIX_VARIANT:
             return t + ", region-centre guard"
@@ -540,11 +626,24 @@ class Exp03(Experiment):
         coastal_needed = {i for i in range(1, n0) if types[i] == LAND and vdef.rows[i][5] == "true"}
         frozen = adjacency_ids(v.text("map/adjacencies.csv"))
         info = {}
-        if key == TRAP_VARIANT:
+        if key in TRAPS:
             region_of = region_lookup(v, n0)
-            pid, root, (rid, p, k) = trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen)
+            opts = ({} if key == TRAP_VARIANT else
+                    {"pred": _is_trap_both if key == TRAP2_VARIANT else _is_trap_grid_only,
+                     "include": _takes_any_fallback})
+            pid, root, (rid, p, k) = trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen, **opts)
             info["trap"] = {"region": rid, "province": p, "pieces": k,
-                            "region_file": v.province_region[p][1], "state_file": v.province_state[p][1]}
+                            "region_file": v.province_region[p][1], "state_file": v.province_state[p][1],
+                            "model": model_values(centres_of(pid, root, region_of)[rid])}
+            return pid, root, [], info
+        if key == LOCAL_VARIANT:
+            src, root_src, _, _ = self.make(v, f"EXP-03-{LOCAL_SOURCE}")
+            region_of = region_lookup(v, n0)
+            pid, root, parents = local_split(van_pid, src, root_src, region_of, LOCAL_REGION)
+            info["local"] = {"region": LOCAL_REGION, "region_file": v.province_region[parents[0]][1],
+                             "parents": parents, "pieces": int(len(root) - n0),
+                             "states": sorted({v.province_state[p][1] for p in parents}),
+                             "model": model_values(centres_of(pid, root, region_of)[LOCAL_REGION])}
             return pid, root, [], info
         extra = VARIANTS[key] - (n0 - 1) - len(small)
         if extra <= 0:
@@ -679,7 +778,9 @@ class Exp03(Experiment):
 
     # -------------------------------------------------------------- README
     def readme(self, ctx, build_id, info):
-        if self.key(build_id) in (FIX_VARIANT, TRAP_VARIANT):
+        if self.key(build_id) in F5_PROBES:
+            return self.readme_probe(ctx, build_id, info)
+        if self.key(build_id) in PROBES:
             return self.readme_bisect(ctx, build_id, info)
         target = info["target"]
         steps = ["When the main menu appears, note the loading time. Start a new game (1936) with any country, "
@@ -765,6 +866,90 @@ class Exp03(Experiment):
             cannot_extra=["Whether other, unrelated engine limits exist between 24k and 30k provinces: this pair only "
                           "tests the region-centre explanation."])
 
+    def readme_probe(self, ctx, build_id, info):
+        """Owner sheet for the three P00b-f5 probes (191only, div0c, div0b); all are expected to crash."""
+        ud = str(ctx.user).replace("\\", "/") if ctx.user else "$HOI4_USER_DIR"
+        crash_send = (f"If it crashed: the newest folder in {ud}/crashes/ -> open exception.txt with Notepad and copy "
+                      "the lines from 'Unhandled Exception' down to line 3 of the Stack Trace. Keep that crash folder "
+                      "(the minidump.dmp in it is read offline). Also say whether game.log contains 'Loaded' "
+                      "followed by a number of provinces.")
+        launch = ("Start the game from the launcher (Play) WITHOUT -debug. Note whether the main menu appears or the "
+                  "game closes/crashes while loading. One try is enough; do not retry with -debug.")
+        steps = ["EXPECTED: the game closes or shows a crash window while loading, before the main menu. If the main "
+                 "menu appears instead, quit the game (no need to start a campaign). Both outcomes are useful."]
+        send = ["Crashed while loading: yes / no (main menu appeared).", crash_send]
+
+        def values(m, label):
+            return (f"Model values for {label}: {m['members']} provinces; old box model: mean point {tuple(m['mean'])}, "
+                    f"region rectangle {tuple(m['rect'])}, divisor {m['dx']}; 2-px grid model: mean point "
+                    f"{tuple(m['mean_g2'])}, rectangle {tuple(m['rect_g2'])}, divisor {m['dx_g2']}; the mean lies in "
+                    f"no member box: old model {m['fallback_all']}, grid model {m['fallback_g2']}.")
+        notes = ["Background: EXP-03-24k crashed (divide by zero in the centre calculation of strategic region 191, "
+                 "Northern Norway). EXP-03-div0 was built to hit the same division in region 193 and LOADED, so our "
+                 "first model was incomplete. Reading the crash dump again suggests that the game stores province "
+                 "boxes on a 2-pixel grid (one province box left in the dump is 1 px wider than its pixels; the "
+                 "grid rule fits every number in the dump, but it is a fit, not proven). With that correction the "
+                 "model reproduces the 24k crash and says div0 should load (its divisor becomes +1). These three "
+                 "builds test the corrected model.",
+                 "Run order: EXP-03-191only first, then EXP-03-div0c, then EXP-03-div0b. Report all three results "
+                 "even if an earlier one is not what we expect."]
+        if self.key(build_id) == LOCAL_VARIANT:
+            t = info["local"]
+            ps = ", ".join(str(p) for p in t["parents"])
+            first = ctx.vanilla.definition.n                     # vanilla IDs are 1..n-1
+            last = first + t["pieces"] - 1
+            prop = (f"Vanilla map plus ONLY the province cuts that EXP-03-24k made inside strategic region "
+                    f"{t['region']} ('{t['region_file']}'): vanilla land provinces {ps} (state files "
+                    f"{', '.join(repr(s) for s in t['states'])}) are cut into exactly the same pieces, pixel for pixel, "
+                    f"as in EXP-03-24k. That adds {t['pieces']} provinces, numbered {first}-{last} (in 24k they had "
+                    "higher numbers). Every other province, state and region is the normal game; the files that list "
+                    "provinces are updated to match.")
+            why = ("Locality test. If this crashes at the same place as EXP-03-24k, the trigger lies in region 191's "
+                   "own shapes. If it loads, the 24k crash also needs something else from the 24k map (for example "
+                   "the total province count or the number range of the IDs).")
+            expected_result = (f"EXPECTED IN GAME: crash while loading with EXCEPTION_INT_DIVIDE_BY_ZERO at the same "
+                               f"address as EXP-03-24k (hoi4.exe offset 0x{CRASH_RVA:X}; 0x7FF6129C4CDC in the "
+                               "2026-09-29 dumps) - but the address can differ if Windows loads hoi4.exe elsewhere; "
+                               "the offset is what counts.")
+            notes = [expected_result, values(t["model"], f"region {t['region']} in this build (the same as in "
+                                                         "EXP-03-24k and in both 24k crash dumps)")] + notes
+        elif self.key(build_id) == TRAP3_VARIANT:
+            t = info["trap"]
+            prop = (f"Vanilla map plus ONE extra change: vanilla land province {t['province']} (state file "
+                    f"'{t['state_file']}') is cut into {t['pieces']} pieces. The cut is chosen so that ONLY the "
+                    "corrected 2-pixel-grid model predicts that the game's centre calculation for strategic region "
+                    f"{t['region']} ('{t['region_file']}') divides by zero; the first model predicts no division by "
+                    f"zero here (its divisor is {t['model']['dx']}). This is the mirror image of EXP-03-div0 (first "
+                    "model 0, grid +1; it loaded).")
+            why = ("The sharpest test of the corrected model: only the 2-pixel-grid model predicts this crash. If this "
+                   "crashes at the same place as EXP-03-24k, the grid model is strongly supported. If it loads, the "
+                   "grid model is wrong or incomplete (EXP-03-div0b then tells us more).")
+            expected_result = (f"EXPECTED IN GAME (grid model): crash while loading with EXCEPTION_INT_DIVIDE_BY_ZERO at "
+                               f"hoi4.exe offset 0x{CRASH_RVA:X} (0x7FF6129C4CDC in the 2026-09-29 dumps). The first "
+                               "model would expect it to load.")
+            notes = [expected_result, values(t["model"], f"region {t['region']} in this build")] + notes
+        else:
+            t = info["trap"]
+            prop = (f"Vanilla map plus ONE extra change: vanilla land province {t['province']} (state file "
+                    f"'{t['state_file']}') is cut into {t['pieces']} pieces. The cut is chosen so that the game's "
+                    f"centre calculation for strategic region {t['region']} ('{t['region_file']}') divides by zero "
+                    "under the first model AND under the corrected 2-pixel-grid model. (EXP-03-div0 cut a different "
+                    "province of region 193: divisor 0 under the first model, +1 under the corrected one; it loaded.)")
+            why = ("Both models predict this crash, so a crash here confirms less than a crash in EXP-03-div0c (where "
+                   "only the grid model predicts one): it fits the grid model, and also the first model plus some "
+                   "unknown extra condition. If it loads, a divisor of 0 is still not enough for the crash under "
+                   "either model and the explanation remains unconfirmed.")
+            expected_result = (f"EXPECTED IN GAME (both models predict it): crash while loading with "
+                               f"EXCEPTION_INT_DIVIDE_BY_ZERO at hoi4.exe offset 0x{CRASH_RVA:X} (0x7FF6129C4CDC in "
+                               "the 2026-09-29 dumps).")
+            notes = [expected_result, values(t["model"], f"region {t['region']} in this build")] + notes
+        return texts.readme(
+            build_id, self.title_for(build_id), prop=prop, why=why, launch=launch, steps=steps, send=send,
+            expected=self.expected(build_id).text, cannot=["EXP-03"], user_dir=ctx.user, notes=notes,
+            cannot_extra=["Why the game stores province boxes on a 2-pixel grid (fitted to one crash dump; the code "
+                          "that fills the boxes was not found), and how regions that wrap around the map edge are "
+                          "handled: these probes use regions that do not wrap."])
+
     # -------------------------------------------------------------- check
     def check(self, ctx, build_id, out):
         v = ctx.vanilla
@@ -779,10 +964,12 @@ class Exp03(Experiment):
         except (OSError, KitError) as e:
             return probs + [f"cannot read output: {e}"]
         n = d.n
-        if target is None:                                 # div0: vanilla + 1..3 pieces of one province
+        if target is None:                                 # div0/div0b: vanilla + 1..3 pieces of one province
             target = n - 1
-            if not n0 < n <= n0 + max(TRAP_KS) - 1:
+            if key in TRAPS and not n0 < n <= n0 + max(TRAP_KS) - 1:
                 probs.append(f"{n - 1} provinces, expected vanilla + 1..{max(TRAP_KS) - 1}")
+            if key == LOCAL_VARIANT and not n0 < n:
+                probs.append(f"{n - 1} provinces, expected more than vanilla")
         if n - 1 != target:
             probs.append(f"{n - 1} provinces, expected {target}")
         van = np.asarray(v.pid)
@@ -805,13 +992,30 @@ class Exp03(Experiment):
         region_of = region_lookup(v, n0)
         cs = centres_of(pid, root, region_of)
         fails = guard_failures(cs, vanilla_centres(van, region_of))
-        if key == TRAP_VARIANT:
+        if key in TRAPS:
             parents = sorted(set(root[n0:].tolist()))
             want_fails = sorted({int(region_of[p]) for p in parents})
             if len(parents) != 1:
-                probs.append(f"div0: new pieces come from {len(parents)} provinces, expected exactly one")
+                probs.append(f"{key}: new pieces come from {len(parents)} provinces, expected exactly one")
+            elif key == TRAP3_VARIANT:
+                if not all(_is_trap_grid_only(cs[r]) for r in want_fails):
+                    probs.append(f"{key}: region {want_fails} is not a grid-only division by zero "
+                                 "(grid dx 0 with the inclusive test, old model safe)")
             elif not all(cs[r].fallback_all and cs[r].dx == 0 for r in want_fails):
-                probs.append(f"div0: region {want_fails} is not the observed dx == 0 case under every convention")
+                probs.append(f"{key}: region {want_fails} is not the observed dx == 0 case under every convention")
+            elif key == TRAP2_VARIANT and not all(cs[r].crash_g2 for r in want_fails):
+                probs.append(f"{key}: region {want_fails} does not divide by zero under the grid model")
+        elif key == LOCAL_VARIANT:
+            parents = sorted(set(root[n0:].tolist()))
+            want_fails = KNOWN_UNSAFE[key]
+            if sorted({int(region_of[p]) for p in parents}) != [LOCAL_REGION]:
+                probs.append(f"{key}: split provinces outside region {LOCAL_REGION}")
+            c = cs.get(LOCAL_REGION)
+            if c is None or c.signature != LOCAL_SIGNATURE:
+                probs.append(f"{key}: region {LOCAL_REGION}'s member boxes differ from EXP-03-{LOCAL_SOURCE}")
+            elif not (c.mean == c.mean_g2 == DUMP_MEAN and c.rect == c.rect_g2 == DUMP_RECT and c.dx == 0
+                      and c.fallback_all and c.crash_g2):
+                probs.append(f"{key}: region {LOCAL_REGION} does not reproduce the dump numbers")
         else:
             want_fails = KNOWN_UNSAFE.get(key, [])
         seen_loading = OBSERVED_LOADING.get(key) == mod_tree_sha256(out)     # these exact bytes loaded in game
