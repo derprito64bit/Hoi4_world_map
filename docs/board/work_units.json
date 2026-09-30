@@ -149,9 +149,9 @@
       "depends_on": [
         "P00b-f5"
       ],
-      "status": "todo",
+      "status": "in_progress",
       "branch": "wu/P00b-f6",
-      "attempts": 0,
+      "attempts": 1,
       "notes": "block-400 rejected: MAP_ERROR sea region fractioned + TOO LARGE BOX (only visible with -debug)"
     }
   ]
