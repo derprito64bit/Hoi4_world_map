@@ -132,10 +132,10 @@
       "depends_on": [
         "P00b-f4"
       ],
-      "status": "todo",
+      "status": "changes_requested",
       "branch": "wu/P00b-f5",
-      "attempts": 0,
-      "notes": "not blocking the owner's remaining EXP runs"
+      "attempts": 2,
+      "notes": "not blocking the owner's remaining EXP runs; r1 ebea6df: 2-px grid box model fits the dump (box 19700 found in both dumps), predicts that div0 loads; review 0/1/4 -> r2 (conservative grid bound, sharper probe div0c)"
     }
   ]
 }
