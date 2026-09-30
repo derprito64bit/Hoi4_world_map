@@ -1,6 +1,6 @@
 # TASK: Grant overwatch read/write access to the project-definition files (owner-approved scope change)
 
-Run this in a **plain** Claude Code session in `C:\dev\Hoi4_world_map` (start `claude` without `--agent overwatch`). The owner approved this change on 2026-09-30.
+Run this in a **plain** Claude Code session (not `--agent overwatch`): either locally in `C:\dev\Hoi4_world_map`, or in a **cloud session on a fresh clone of `github.com/derprito64bit/Hoi4_world_map`**, which is fine because everything needed is on `main`. The owner approved this change on 2026-09-30.
 
 ## 1. OBJECTIVE
 Let the main-session agent **overwatch** edit the project-definition files (spec, phase prompts, skill references/scripts, agent definitions, CLAUDE.md), so owner-approved changes such as S14 (`to-check/2026-09-30_projection-decision.md`) can be applied without a separate session. Every subagent stays blocked from those files, and nobody except the owner can change the permission system itself.
@@ -69,13 +69,13 @@ Bash-created files are not checked by the hook. This change is about the Write/E
 6. **COMMIT:**
    - `git add .claude/agentops/scopes.json .claude/agents/overwatch.md docs/AGENT_SYSTEM.md to-check/2026-09-30_projection-decision.md`
    - `git commit -m "chore(agents): owner-approved project-file access for overwatch (2026-09-30)"`, ending the message with the repo's usual `Co-Authored-By` line.
-7. **INTEGRATE:** `git switch main`, `git merge --no-ff chore/overwatch-scope`, `git push origin main`.
+7. **INTEGRATE:** `git switch main`, `git merge --no-ff chore/overwatch-scope`, `git push origin main`. **If pushing to `main` is not permitted** (e.g. a cloud session restricted to its own branch): push the branch (`git push -u origin chore/overwatch-scope`, or the session's own `claude/...` branch), open a pull request to `main` titled "chore(agents): owner-approved project-file access for overwatch" with the §6 outputs in the body, and stop. The owner merges it. Never force-push.
 8. **REPORT:** the diff summary, the verification outputs, the merge commit hash, and the push result.
 
 ## 6. VERIFICATION COMMANDS
-Run from the repo root in Git Bash. Each line prints the hook's exit code; the expected value is at the end.
+Run from the repo root in Git Bash (Windows) or bash (Linux/cloud). **Sanity check first:** before editing anything, `t docs/PROJECT_SPEC.md overwatch` must print 2. If it prints 0, the harness path is wrong; fix `R` before trusting any result. Each line prints the hook's exit code; the expected value is at the end.
 ```bash
-R="$(pwd -W)"; H=.claude/agentops/scope_guard.py   # pwd -W: Windows path (C:/dev/...); a /c/dev/... path makes the hook treat files as outside the repo and every check wrongly returns 0
+R="$(pwd -W 2>/dev/null || pwd)"; H=.claude/agentops/scope_guard.py   # Windows Git Bash needs pwd -W (C:/dev/...; a /c/dev/... path makes every check wrongly return 0); Linux/cloud uses plain pwd
 t(){ printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"},"agent_type":"%s","cwd":"%s"}' "$1" "$2" "$R" | python $H >/dev/null 2>&1; echo "$2 $1 -> $?"; }
 t docs/PROJECT_SPEC.md overwatch                          # 0
 t docs/prompts/P05-provinces.md overwatch                 # 0
@@ -97,7 +97,7 @@ git diff --stat main...chore/overwatch-scope               # exactly the 4 files
 Then append to `to-check/2026-09-30_projection-decision.md`: `| CHK-020 | Overwatch project-file access granted (scopes.json agent_exceptions; agentops/settings stay owner-only) | owner/plain session | DONE (2026-09-30, <merge hash>) |`, amend nothing, and include it in the same commit.
 
 ## 7. STOP CONDITION & CHECKPOINT
-- **Complete** when all 15 checks match, the merge is on `main`, and `git push` succeeded.
+- **Complete** when all 15 checks match and either the merge is on `main` and pushed, or a PR to `main` is open with the verification outputs. Afterwards the owner tells the local overwatch session to `git pull` (local `main` must not diverge meanwhile).
 - **Stop and report without committing** if any check differs, if the working tree isn't clean at the start, or if `scope_guard.py` doesn't behave as described in §3.
 - **Hard stop:** do not apply any S14 edits and do not touch the spec, prompts or skill content. That is overwatch's next step after the owner picks λb.
 - **Failure modes to avoid:**
