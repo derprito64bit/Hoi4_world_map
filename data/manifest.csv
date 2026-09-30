@@ -1,0 +1,2 @@
+id,dataset,version,source_url,local_path,sha256,licence,crs,phases,retrieved,notes
+ne_50m_land,Natural Earth 1:50m physical land polygons,4.1.0,https://naciscdn.org/naturalearth/50m/physical/ne_50m_land.zip,data/raw/naturalearth/ne_50m_land.zip,0b8e670cf80dce9cbebe2a193bc44ba5602758c22e1fa603980553646d7ff162,Public domain (Natural Earth terms of use),EPSG:4326,P00d,2026-09-30,preview-only (hybrid projection previews and seam statistics); pinned by tools/projection/naturalearth.py; P02 does the full data acquisition
