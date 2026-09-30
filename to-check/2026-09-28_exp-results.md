@@ -37,7 +37,7 @@ Follows `2026-09-28_p00b-kit.md` (run order, what to send back). Owner reports; 
 | EXP-09b–e | — | withheld until P00b-f7 | — | blocked |
 | EXP-05-3to1 (trees.bmp 1800×600) | 2026-09-29 21:14 | the owner compared with vanilla (no screenshots saved): same forest spots, runs fine | `system.log`: EXP-05-3to1 active; error.log: 0 tree lines; no new crash dump | **OK** |
 | EXP-06 (region 113 "South Central Pacific", 39 sea provinces → lakes) | 2026-09-30 11:36 | Loads, plays. **Looks like water.** Not a sea zone: no naval-range overlay, the owner says it seems treated as land. **Route lines are drawn straight through the block (no detour), but a fleet gets stuck as soon as it enters a block tile** | system.log: EXP-06 active; game.log: 13,414 provinces, launched; error.log: nothing from the mod | **FAIL as off-globe filler**: the pathfinder counts lake tiles as passable while movement stops there → ships (incl. AI) can get trapped |
-| EXP-07 | — | — | — | pending |
+| EXP-07 (state 1081 renumbered to 1083) | 2026-09-30 15:56 | Menu loads; **crash on starting a scenario** | error.log: `statetemplate.cpp:657 Missing State ID 1081` / `1082`; `MAP_ERROR: Definition for state id 1081 (1082) is either missing or invalid`; `strategicair.cpp MAP_ERROR: no air base site / rocket site / gun emplacement defined for state 1081 (1082)`; crash dump `crashes/hoi4_20260930_155614` (ACCESS_VIOLATION) | **State IDs must be contiguous 1..N (no gaps). Hard rule for P06/P13** |
 
 ## EXP-01 conclusion (2026-09-28)
 - Within the map, a link row joins two non-touching seas (both forms work, no error.log line).
