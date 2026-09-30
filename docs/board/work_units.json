@@ -170,6 +170,25 @@
       "branch": "wu/P00b-f7",
       "attempts": 2,
       "notes": "owner EXP-09a run 2026-09-30 15:45; r1 e249f0b review 0/1/4 (install case-insensitive bypass); r2 f1d5138 verified by overwatch on main -> merged"
+    },
+    {
+      "id": "P00d",
+      "phase": "P00",
+      "title": "Hybrid Equal Earth projection (DEC-035): EE interior, C1 blend to straight edges for a seamless wrap; previews for lambda_b 60/90/120; distortion metrics",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/projection/**",
+        "tests/projection/**",
+        "data/manifest.csv",
+        "data/README.md"
+      ],
+      "depends_on": [
+        "P00b"
+      ],
+      "status": "in_progress",
+      "branch": "wu/P00d",
+      "attempts": 1,
+      "notes": "owner decision 2026-09-30 (option 4); owner picks lambda_b from previews (CHK-019)"
     }
   ]
 }
