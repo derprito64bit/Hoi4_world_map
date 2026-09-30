@@ -149,10 +149,10 @@
       "depends_on": [
         "P00b-f5"
       ],
-      "status": "changes_requested",
+      "status": "done",
       "branch": "wu/P00b-f6",
       "attempts": 2,
-      "notes": "block-400 rejected: MAP_ERROR sea region fractioned + TOO LARGE BOX (only visible with -debug); r1 9a0de96: EXP-02c 4 probes, block-800 retired; review 0/1/7 (ambiguity C2 vs land-area vs tile rules) -> r2; tie-breaker: strip-full with -debug"
+      "notes": "block-400 rejected: MAP_ERROR sea region fractioned + TOO LARGE BOX (only visible with -debug); r1 9a0de96: EXP-02c 4 probes, block-800 retired; review 0/1/7 (ambiguity C2 vs land-area vs tile rules) -> r2; tie-breaker: strip-full with -debug; r2 de0d614 (READMEs, rule table, install refuses retired IDs, keep_foreign), verified by overwatch on main -> merged"
     }
   ]
 }
