@@ -136,6 +136,23 @@
       "branch": "wu/P00b-f5",
       "attempts": 2,
       "notes": "not blocking the owner's remaining EXP runs; r1 ebea6df: 2-px grid box model fits the dump (box 19700 found in both dumps), predicts that div0 loads; review 0/1/4 -> r2 (conservative grid bound, sharper probe div0c)"
+    },
+    {
+      "id": "P00b-f6",
+      "phase": "P00",
+      "title": "EXP-02b redesign: sea regions contiguous; clean TOO LARGE BOX threshold bisect (filled rectangles W x H, no enclaves)",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/experiments/**",
+        "tests/experiments/**"
+      ],
+      "depends_on": [
+        "P00b-f5"
+      ],
+      "status": "todo",
+      "branch": "wu/P00b-f6",
+      "attempts": 0,
+      "notes": "block-400 rejected: MAP_ERROR sea region fractioned + TOO LARGE BOX (only visible with -debug)"
     }
   ]
 }
