@@ -6,7 +6,9 @@ What was observed with ``-debug`` (owner runs, ``to-check/2026-09-28_exp-results
   (land 1852, sea 2755: filled 400 x 400 squares that also held donor remnants as enclaves);
 * not flagged: EXP-02-600 (land 1664, sea 5367: strips 600 px wide) and every vanilla province
   (widest 7855, 280 x 115);
-* not run with -debug (no evidence either way): EXP-02-300, EXP-02b-strip-full.
+* not run with -debug (no evidence either way): EXP-02-300, EXP-02b-strip-full. strip-full is the
+  tie-breaker of the EXP-02c run (``TIEBREAK``): its land host 3172 (2188 x 14, w*h 30,632) gets no
+  line only under an area-type rule, so it is to be run with -debug before the four probes.
 
 ``OBSERVED`` pins the measured pixel boxes of those hosts and of the vanilla provinces that hold the
 maximum of any metric below (``diag02.py`` re-measures them from the maps; a test compares).
@@ -16,11 +18,24 @@ A rule family is a metric m (of the box, or of the pixels) with the rule "flagge
 (``two_axis``). Engine boxes are the 2-px grid boxes of ``regioncentre.engine_boxes`` (fitted to the
 EXP-03-24k dump); the pixel box is the plain span (w = xmax - xmin + 1).
 
-The probes of EXP-02c (``exp02c.PROBES``) are chosen so that each surviving family predicts a
-different pattern of flagged / clean builds (``predict``).
+ASSUMPTIONS (the probe design depends on them; a result that fits no row may mean one is wrong):
+
+* one threshold for land and sea: the main families C1-C4 use every observation regardless of kind.
+  Without it the area rule splits into a land limit in [32,200, 90,000) and a sea limit in
+  [33,600, 61,200) (``C1k``);
+* one rule, not a combination (e.g. "w > Tw or w*h > A" is not a candidate of its own);
+* the line depends on the box only (not on the fill: the 1-px strips of EXP-02-1200 were flagged).
+
+The probes of EXP-02c (``exp02c.PROBES``) plus ``TIEBREAK`` are chosen so that the main families
+C1-C4 have disjoint sets of possible outcomes (``outcomes``, exact over every threshold the
+observations allow). What stays ambiguous is named, not hidden (``ambiguous``): the row "only
+sea-L-330x480 flagged" of C2 (w+h) is also produced by a 32-px or 64-px tile-count rule (a
+quantised area rule), and the kind-specific area rule ``C1k`` overlaps C1 (the same reading). A
+strip-full line rules out the land-only area limit behind that row; no line there rules out C2.
 """
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass
 
@@ -216,7 +231,8 @@ def candidates(boxes=OBSERVED) -> list:
     if wd.consistent and md.consistent and not single("max(w,h)", boxes).consistent:
         out.append(("C4", f"width / longest side only, max(w,h) > T, T in [{md.lo:.0f}, {md.hi:.0f}) px, "
                           "if block-400's line came from its enclaves and not from its size (e.g. the "
-                          f"validator's W/8 = {W_VANILLA // 8} or a 1024 cap)",
+                          f"validator's W/8 = {W_VANILLA // 8} or a 1024 cap); the same row also fits 'width, "
+                          "or height >= 480, or area >= 158,400' (larger clean boxes are untested)",
                     lambda b, a=md: predict_single(a, METRICS["max(w,h)"](b))))
     return out
 
@@ -224,7 +240,12 @@ def candidates(boxes=OBSERVED) -> list:
 def narrows(cid: str, b: Box, boxes=OBSERVED) -> str:
     """What a TOO LARGE BOX line on box ``b`` would say about family ``cid``'s threshold (for '?' outcomes)."""
     if cid == "C1":
-        return f"A < {b.w * b.h}"
+        a, e = single("w*h", boxes), single("engine w*h", boxes)
+        px, eng = b.w * b.h, _ew(b) * _eh(b)
+        parts = [f"A < {px}"] if a.lo < px < a.hi else []
+        if e.lo < eng < e.hi and eng != px:
+            parts.append(f"the engine box counts and A < {eng}")
+        return " or ".join(parts)
     if cid == "C2":
         return f"S < {b.w + b.h}"
     if cid == "C3":
@@ -260,3 +281,80 @@ def rejected(boxes=OBSERVED) -> list:
         if not f.consistent:
             out.append((name, f.lo, f.hi))
     return out
+
+
+# ------------------------------------------------------------------ exact outcome sets (P00b-f6 r2)
+TIEBREAK = next(b for b in OBSERVED if b.label == "EXP-02b-strip-full" and b.kind == "land")
+
+FAMILIES = {
+    "C1": "box area w*h > A (one threshold for land and sea)",
+    "C2": "half perimeter w+h > S",
+    "C3": "either side: w > Tw or h > Th",
+    "C4": "longest side only, max(w,h) > T (block-400 confounded by its enclaves)",
+    "C1k": "box area with its own threshold for land and for sea",
+    "G32": "more than K 32-px tiles touched (a quantised area rule)",
+    "G64": "more than K 64-px tiles touched (a quantised area rule)",
+}
+MAIN = ("C1", "C2", "C3", "C4")
+
+
+def _cuts(values, lo, hi) -> list:
+    """Thresholds that give every distinct outcome of "v > T" for T in [lo, hi)."""
+    return sorted({lo} | {v for v in values if lo <= v < hi})
+
+
+def _single_outcomes(metric, intervals: dict, boxes) -> set:
+    """Outcomes of "metric > T[kind]" over all allowed thresholds; ``intervals`` = {kind or None: (lo, hi)}."""
+    keys = sorted(intervals, key=str)
+    choices = [_cuts([metric(b) for b in boxes if k is None or b.kind == k], *intervals[k]) for k in keys]
+    out = set()
+    for ts in itertools.product(*choices):
+        t = dict(zip(keys, ts))
+        out.add(tuple(bool(metric(b) > t[None if None in t else b.kind]) for b in boxes))
+    return out
+
+
+def _interval(name: str, obs, kind=None, drop_confounded=False) -> tuple:
+    f = single(name, [b for b in obs if kind is None or b.kind == kind], drop_confounded)
+    if not f.consistent:
+        raise ValueError(f"{name} ({kind or 'any kind'}) is not consistent with the observations")
+    return f.lo, f.hi
+
+
+def outcomes(fid: str, boxes, obs=OBSERVED) -> set:
+    """Every outcome (tuple of flagged? per box) family ``fid`` allows for ``boxes``, over every threshold
+    consistent with ``obs``, pixel box and engine box variants together."""
+    out = set()
+    if fid in ("C1", "C2", "G32", "G64"):
+        names = {"C1": ("w*h", "engine w*h"), "C2": ("w+h", "engine w+h"), "G32": ("32-px tiles",),
+                 "G64": ("64-px tiles",)}[fid]
+        for n in names:
+            out |= _single_outcomes(METRICS[n], {None: _interval(n, obs)}, boxes)
+    elif fid == "C1k":
+        for n in ("w*h", "engine w*h"):
+            out |= _single_outcomes(METRICS[n], {k: _interval(n, obs, k) for k in ("land", "sea")}, boxes)
+    elif fid == "C4":
+        for n in ("max(w,h)", "engine max side"):
+            out |= _single_outcomes(METRICS[n], {None: _interval(n, obs, drop_confounded=True)}, boxes)
+    elif fid == "C3":
+        for eng in (False, True):
+            t = two_axis(obs, engine=eng)
+            wh = [(b.engine()[2], b.engine()[3]) if eng else (b.w, b.h) for b in boxes]
+            for tw in _cuts([w for w, _ in wh], *t.tw):
+                for th in _cuts([h for _, h in wh], *t.th):
+                    out.add(tuple(bool(w > tw or h > th) for w, h in wh))
+    else:
+        raise KeyError(fid)
+    return out
+
+
+def ambiguous(boxes, fids=None, obs=OBSERVED) -> list:
+    """Pairs of families (sorted) that share at least one possible outcome on ``boxes``."""
+    fids = list(FAMILIES) if fids is None else list(fids)
+    sets = {f: outcomes(f, boxes, obs) for f in fids}
+    return [(a, b) for i, a in enumerate(fids) for b in fids[i + 1:] if sets[a] & sets[b]]
+
+
+def explain(outcome: tuple, boxes, obs=OBSERVED) -> list:
+    """Families (in FAMILIES order) that allow an observed outcome (tuple of flagged? per box)."""
+    return [f for f in FAMILIES if tuple(outcome) in outcomes(f, boxes, obs)]

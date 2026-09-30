@@ -9,8 +9,9 @@ Retired in P00b-f6: ``EXP-02b-block-800-sea`` / ``-800-land`` (``RETIRED``). The
 remnants would cut 8 naval strategic regions in pieces (the fatal MAP_ERROR that stopped
 block-400); no clean filled square of 400 px or more exists on the vanilla map
 (``boxfill.find_rects``: some province always lies wholly inside and would stay as an
-enclave); and every TOO LARGE BOX rule that fits the observations already predicts the line
-for an 800 x 800 box. The threshold probes are EXP-02c.
+enclave); and the rule families C1-C3 of ``boxrules`` already predict the line for an 800 x 800
+box, while C4 (longest side only, block-400 confounded by its enclaves) cannot be tested by a
+block with enclaves at all. The threshold probes are EXP-02c.
 
 block-400 was REJECTED in game (2026-09-29 23:02, -debug): TOO LARGE BOX for both hosts, and
 the map was refused because its sea remnants cut North East Pacific and Central North Pacific
@@ -253,8 +254,16 @@ def position_owner(rel: str, line: str, van: np.ndarray, px) -> int:
     return int(van[px])
 
 
-def relocate_positions(v, van: np.ndarray, got: np.ndarray) -> tuple:
-    """({rel: new text} for files with moved lines, {rel: moved line count}). Moved lines go to a remnant pixel."""
+def is_foreign(rel: str, line: str, van: np.ndarray, px) -> bool:
+    """A unitstacks line that already sat outside its own province in vanilla (a vanilla quirk)."""
+    return position_owner(rel, line, van, px) != int(van[px])
+
+
+def relocate_positions(v, van: np.ndarray, got: np.ndarray, keep_foreign: bool = False) -> tuple:
+    """({rel: new text} for files with moved lines, {rel: moved line count}). Moved lines go to a remnant pixel.
+
+    ``keep_foreign`` (EXP-02c): lines that already sat outside their own province in vanilla stay unchanged.
+    """
     H, W = van.shape
     diff = got != van
     hm = v.heightmap
@@ -266,6 +275,8 @@ def relocate_positions(v, van: np.ndarray, got: np.ndarray) -> tuple:
         for i, ln in enumerate(lines):
             px = _pos(ln, cols, H, W)
             if px is not None and diff[px]:
+                if keep_foreign and is_foreign(rel, ln, van, px):
+                    continue
                 p = position_owner(rel, ln, van, px)
                 moved.append((i, p))
                 targets.add(p)
@@ -290,8 +301,12 @@ def relocate_positions(v, van: np.ndarray, got: np.ndarray) -> tuple:
     return out, counts
 
 
-def position_problems(v, van: np.ndarray, got: np.ndarray, rel: str, text: str | None) -> list:
-    """A position file is vanilla except lines on re-assigned pixels, which moved (x/y/z only) into their province."""
+def position_problems(v, van: np.ndarray, got: np.ndarray, rel: str, text: str | None,
+                      keep_foreign: bool = False) -> list:
+    """A position file is vanilla except lines on re-assigned pixels, which moved (x/y/z only) into their province.
+
+    ``keep_foreign``: lines that sat outside their own province in vanilla must stay unchanged instead.
+    """
     H, W = van.shape
     cols = POS_FILES[rel]
     diff = got != van
@@ -303,6 +318,10 @@ def position_problems(v, van: np.ndarray, got: np.ndarray, rel: str, text: str |
     for i, (la, lb) in enumerate(zip(a, b)):
         px = _pos(la, cols, H, W)
         on_moved = px is not None and bool(diff[px])
+        if keep_foreign and on_moved and is_foreign(rel, la, van, px):
+            if la != lb:
+                probs.append(f"{rel} line {i + 1}: sat outside its own province in vanilla and must stay unchanged")
+            continue
         if la == lb:
             if on_moved:
                 probs.append(f"{rel} line {i + 1}: position lies on a re-assigned pixel and was not moved")
@@ -574,10 +593,19 @@ def _ids(xs, limit: int = 40) -> str:
 # block builds: suffix -> (square size, kinds). block-800-sea / -land were retired in P00b-f6 (module doc).
 BLOCK_BUILDS = {"block-400": (400, (LAND, SEA))}
 RUN_ORDER = ["EXP-02b-strip-full", "EXP-02b-block-400"]
-RETIRED = ("EXP-02b-block-800-sea", "EXP-02b-block-800-land")
+from .registry import RETIRED  # noqa: E402,F401  (re-exported; install.py refuses these IDs)
 ORDER_NOTE = ("The two EXP-02b builds, strip-full and block-400, were both run on 2026-09-29. strip-full is very "
               "wide but thin, like EXP-02-1200; block-400 is filled 400 px, land and sea. block-800-sea and "
               "block-800-land were retired (P00b-f6); the TOO LARGE BOX threshold probes are EXP-02c.")
+TIEBREAK_NOTE = ("RUN AGAIN WITH -debug (P00b-f6): this build loaded on 2026-09-29, but without -debug, so the "
+                 "game wrote no map-check lines. Run it once more with -debug FIRST, before the four EXP-02c builds: "
+                 "whether land province 3172 (2188 x 14 px, box area 30,632) gets a 'TOO LARGE BOX' line separates an "
+                 "area rule (no line) from the others (a line; only an area rule on the 2-px engine box, 2188 x 16 = "
+                 "35,008, would still allow one). Sea province 6848 is expected to get the line under "
+                 "every rule; report it too.")
+LAUNCH_DEBUG = ("Add the launch option -debug (Steam -> Hearts of Iron IV -> Properties -> Launch options), then start "
+                "the game from the launcher (Play). -debug is REQUIRED: without it the game writes no map-check "
+                "lines (TOO LARGE BOX) to error.log. Remove -debug after the test.")
 REJECTED_NOTE = ("DO NOT RUN AGAIN: this build was run on 2026-09-29 and REJECTED. With -debug the game logged TOO "
                  "LARGE BOX for both hosts and refused the map with 'MAP_ERROR: Naval strategic region ... is "
                  "fractioned' (North East Pacific, Central North Pacific): the donor remnants cut those regions in "
@@ -720,6 +748,7 @@ class Exp02b(Experiment):
             notes.append("Control: EXP-02-1200 (1,200 px strips, hosts with 12 and 27 neighbours) loaded without a "
                          "BOX line.")
             cannot = [CANNOT_02B["size"], CANNOT_02B["strip"]]
+            notes.insert(0, TIEBREAK_NOTE)
         else:
             size, kinds = sp
             parts = [info[KIND_NAME[k]] for k in kinds]
@@ -752,7 +781,8 @@ class Exp02b(Experiment):
                          "strategic regions listed above now have a piece cut off. The normal game already has 30 "
                          "non-contiguous states. Pathing near the blocks is not under test.")
             cannot = [CANNOT_02B["size"], CANNOT_02B["block"]]
-        return texts.readme(build_id, self.title_for(build_id), prop=prop, why=why, launch=texts.LAUNCH_NORMAL,
+        launch = LAUNCH_DEBUG if sp is None else texts.LAUNCH_NORMAL
+        return texts.readme(build_id, self.title_for(build_id), prop=prop, why=why, launch=launch,
                             steps=steps, send=send, expected=self.expected(build_id).text, cannot=[],
                             cannot_extra=cannot, user_dir=ctx.user, notes=notes)
 

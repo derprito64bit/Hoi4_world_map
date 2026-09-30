@@ -264,6 +264,8 @@ def test_readme_states_side_effects(ctx, built, bid):
         assert part in r, part
     assert "only the three sizes tested" not in r                       # no reused EXP-02 limitation
     assert ("DO NOT RUN AGAIN" in r) == (bid == "EXP-02b-block-400")      # the rejected build says so first
+    # P00b-f6 r2: strip-full is the EXP-02c tie-breaker and must be re-run with -debug
+    assert ("RUN AGAIN WITH -debug" in r and "-debug is REQUIRED" in r) == (bid == "EXP-02b-strip-full")
 
 
 def test_constants_still_valid_on_this_game(ctx):

@@ -54,9 +54,17 @@ def test_readme_asks_for_debug_and_explains_every_outcome(ctx, built, bid):
     r = (out / "README.txt").read_text(encoding="utf-8")
     p = PROBES[bid]
     for part in ("-debug is REQUIRED", "TOO LARGE BOX", "fractioned", f"'{p.host}'", "C1:", "C2:", "C3:", "C4:",
-                 "Any other pattern", f"{p.w} x {p.h}", "no enclaves", "BBOX_MAX", "touches"):
+                 "Any other pattern", f"{p.w} x {p.h}", "no enclaves", "BBOX_MAX", "touches",
+                 "FIRST EXP-02b-strip-full once more, now with -debug", "ONE limit for land and sea",
+                 "also given by a G32 / G64 tile rule", "land-only area limit between 66,000 and 90,000",
+                 "height >= 480, or area >= 158,400", "The same line for the donor provinces is expected"):
         assert part in r, part
     assert "WITHOUT -debug" not in r
+    assert r.index("strip-full LINE, land-440x150 none") > 0          # the exact outcome list starts with strip-full
+    is_l = not p.is_rect
+    assert ("lies OUTSIDE the province" in r) == is_l
+    assert ("EXP-02-1200's sea host 8337 touched 27" in r) == (info["neighbours"] > info["vanilla_max_neighbours"])
+    assert is_l <= ("EXP-02-1200's sea host 8337 touched 27" in r)
 
 
 def _edit_pid(ctx, out, fn):
@@ -168,8 +176,40 @@ def test_pinned_vanilla_boxes_match_the_game(ctx):
 
 
 def test_probe_sites_are_the_first_valid_ones(ctx):
-    """PROBES were found with find_site; re-running the search reproduces them (the cheap ones)."""
+    """PROBES were found with find_site; re-running the search reproduces every one of them (review r1 #7)."""
     from experiments.exp02c import PROBES, find_site
     from experiments.mapdata import LAND
-    for bid, kind, w, h in (("EXP-02c-land-440x150", LAND, 440, 150), ("EXP-02c-sea-70x440", SEA, 70, 440)):
-        assert find_site(ctx.vanilla, kind, w, h, step=2) == (PROBES[bid].shape, PROBES[bid].host)
+    for bid, kind, w, h in (("EXP-02c-land-440x150", LAND, 440, 150), ("EXP-02c-sea-70x440", SEA, 70, 440),
+                            ("EXP-02c-land-150x300", LAND, 150, 300)):
+        assert find_site(ctx.vanilla, kind, w, h, step=2) == (PROBES[bid].shape, PROBES[bid].host), bid
+    L = PROBES["EXP-02c-sea-L-330x480"]
+    assert find_site(ctx.vanilla, SEA, 330, 480, ell_arm=(60, 38)) == (L.shape, L.host)
+
+
+def test_land150_keeps_the_foreign_unitstack_lines(ctx, built):
+    """Review r1 #6: 8 vanilla unitstack lines of 5782, 5808, 5834, 2607 sit inside the shape, outside their own
+    province; they stay unchanged and the README names them."""
+    bid = "EXP-02c-land-150x300"
+    exp, out, info = built[bid]
+    kept = info["kept_foreign"]
+    assert list(kept) == ["map/unitstacks.txt"] and len(kept["map/unitstacks.txt"]) == 8
+    assert sorted({q for _, q in kept["map/unitstacks.txt"]}) == [2607, 5782, 5808, 5834]
+    r = (out / "README.txt").read_text(encoding="utf-8")
+    assert "8 unit-stack lines of provinces 2607, 5782, 5808, 5834 (neither host nor donor)" in r
+    van = ctx.vanilla.text("map/unitstacks.txt").split("\n")
+    got = (out / "map" / "unitstacks.txt").read_text(encoding="utf-8").split("\n")
+    for n, _ in kept["map/unitstacks.txt"]:
+        assert got[n - 1] == van[n - 1]
+    p = out / "map" / "unitstacks.txt"
+    orig = p.read_bytes()
+    n0 = kept["map/unitstacks.txt"][0][0]
+    s = got[n0 - 1].split(";")
+    s[2] = "0.50"                                          # move one foreign line (what r1 did): refused
+    got2 = list(got)
+    got2[n0 - 1] = ";".join(s)
+    try:
+        p.write_bytes("\n".join(got2).encode("utf-8"))
+        assert any("must stay unchanged" in x for x in exp.check(ctx, bid, out))
+    finally:
+        p.write_bytes(orig)
+    assert exp.check(ctx, bid, out) == []

@@ -3,10 +3,13 @@
 Each build changes ONE province against vanilla 1.19.3: the host takes every pixel of one clean,
 filled shape (``boxfill``: a rectangle, or an L of two rectangles), so its bounding box becomes the
 shape's box. The boxes are chosen so that the rule families that survive the -debug observations
-(``boxrules.candidates``) each predict a different pattern of TOO LARGE BOX lines over the four
-builds (``patterns``; a test keeps the patterns pairwise distinct):
+(``boxrules.candidates``) each predict a different pattern of TOO LARGE BOX lines over the owner's
+run (``patterns``): EXP-02b-strip-full first (already built; to be re-run with -debug; its land
+host 3172 is the tie-breaker), then the four probes. A test keeps the patterns pairwise distinct,
+also exactly over every allowed threshold (``boxrules.outcomes``):
 
     build (box w x h, w*h, w+h)          C1 w*h   C2 w+h   C3 w or h   C4 longest side
+    strip-full 3172 (30,632, 2202)         either   LINE     LINE        LINE
     land-440x150   (66,000, 590)           LINE     none     none        none
     sea-70x440     (30,800, 510)           none     none     LINE        none
     land-150x300   (45,000, 450)           either   none     either      none
@@ -14,8 +17,14 @@ builds (``patterns``; a test keeps the patterns pairwise distinct):
 
 (LINE = TOO LARGE BOX under every threshold the family allows, none = no line, either = the line
 tells where the threshold lies.) land-440x150 alone names C1, sea-70x440 alone names C3, sea-L alone
-names C2, no line at all names C4; land-150x300 then narrows C1's area (45,000 in [33,600, 61,200))
-or C3's height limit (300 in [173, 400), e.g. H/8 = 256).
+names C2, no line on the probes names C4; land-150x300 then narrows C1's area (45,000 in [33,600,
+61,200)) or C3's height limit (300 in [173, 400), e.g. H/8 = 256).
+
+ASSUMPTIONS (``boxrules``): one limit for land and sea, one rule (no combination), the box only.
+What the run cannot separate is printed in every README (``outcome_meanings``): the C2 row is also
+the row of a 32-/64-px tile-count rule; without strip-full it would also be the row of a land-only
+area limit in [66,000, 90,000), which strip-full's land host (30,632) rules in (no line) or out
+(line). The C4 row also fits "width, or height >= 480, or area >= 158,400".
 
 Why an L: C2 (w+h) and C4 (longest side) differ only on boxes with w+h >= 804 and both sides <= 600.
 No clean filled rectangle of that kind exists on the vanilla map (``find_rects`` finds none from
@@ -243,15 +252,58 @@ def probe_problems(v, van: np.ndarray, got: np.ndarray, probe: Probe, observed=N
     return probs
 
 
+def foreign_lines(v, van: np.ndarray, got: np.ndarray) -> dict:
+    """{rel: [(line number, own province)]}: position lines on re-assigned pixels that already sat outside their
+    own province in vanilla (vanilla quirks); EXP-02c leaves them unchanged (``keep_foreign``)."""
+    from .exp02b import _pos, is_foreign
+    from .positions import split_lines
+    H, W = van.shape
+    diff = got != van
+    out = {}
+    for rel, cols in sorted(POS_FILES.items()):
+        lines, _ = split_lines(v.text(rel))
+        for i, ln in enumerate(lines):
+            px = _pos(ln, cols, H, W)
+            if px is not None and diff[px] and is_foreign(rel, ln, van, px):
+                out.setdefault(rel, []).append((i + 1, int(ln.split(";")[0])))
+    return out
+
+
+def centre_pixel(probe: Probe) -> tuple:
+    """(row, col) of the box centre (integer halves rounded down)."""
+    x0, x1, y0, y1 = probe.box
+    return (y0 + y1) // 2, (x0 + x1) // 2
+
+
 # ------------------------------------------------------------------ outcome patterns
 WORD = {"F": "LINE", "c": "none", "?": "either"}
 
 
-def patterns(probes=None, cands=None) -> dict:
-    """{family id: (text, {build id: 'F' | 'c' | '?'})} over the probe builds."""
+TIEBREAK_ID = "EXP-02b-strip-full"      # run first, with -debug; its land host 3172 decides area vs the rest
+
+
+def run_boxes(probes=None) -> dict:
+    """{build id: Box} in owner run order: the strip-full tie-breaker (land host 3172), then the probes."""
     probes = PROBES if probes is None else probes
+    return {TIEBREAK_ID: boxrules.TIEBREAK, **{b: p.boxrule_box() for b, p in probes.items()}}
+
+
+def patterns(probes=None, cands=None) -> dict:
+    """{family id: (text, {build id: 'F' | 'c' | '?'})} over strip-full and the probe builds (run order)."""
+    boxes = run_boxes(probes)
     cands = boxrules.candidates() if cands is None else cands
-    return {cid: (text, {b: fn(p.boxrule_box()) for b, p in probes.items()}) for cid, text, fn in cands}
+    return {cid: (text, {b: fn(bx) for b, bx in boxes.items()}) for cid, text, fn in cands}
+
+
+def outcome_meanings(probes=None) -> list:
+    """[(outcome, [family ids])] for every outcome some family allows (exact, ``boxrules.outcomes``), sorted by
+    the first main family that allows it."""
+    boxes = list(run_boxes(probes).values())
+    sets = {f: boxrules.outcomes(f, boxes) for f in boxrules.FAMILIES}
+    every = sorted(set().union(*sets.values()))
+    rows = [(o, [f for f in boxrules.FAMILIES if o in sets[f]]) for o in every]
+    order = list(boxrules.FAMILIES)
+    return sorted(rows, key=lambda r: (order.index(r[1][0]), r[0]))
 
 
 def distinct(pats: dict) -> list:
@@ -270,8 +322,12 @@ def distinct(pats: dict) -> list:
 LAUNCH = ("Add the launch option -debug (Steam -> Hearts of Iron IV -> Properties -> Launch options), then start "
           "the game from the launcher (Play). -debug is REQUIRED for this test: without it the game writes no "
           "map-check lines (TOO LARGE BOX) to error.log. Remove -debug after the test.")
-RUN_NOTE = ("Run the four EXP-02c builds one at a time, in any order (each changes a different single province); "
-            "the answer is the pattern over all four, so report every build, also when it shows no line.")
+RUN_NOTE = ("Run order: FIRST EXP-02b-strip-full once more, now with -debug (it is already built and loaded fine "
+            "before; its land province 3172 is the tie-breaker between an area rule and the others), THEN the four "
+            "EXP-02c builds one at a time, in any order (each changes a different single province). The answer is "
+            "the pattern over all five, so report every build, also when it shows no line.")
+ASSUME = ("The reading assumes ONE limit for land and sea, ONE rule (not a combination of two), and that only the "
+          "box counts (not how full it is).")
 CANNOT = [
     "the exact threshold: the four boxes tell the rule families apart; inside the winning family they narrow the "
     "threshold to an interval, not to one number",
@@ -280,6 +336,9 @@ CANNOT = [
     "performance is not tested",
     "only these four shapes: a rule that no candidate family describes may still fit; a pattern that matches no "
     "row of the table is itself the answer to report",
+    "heights above 480 px and box areas above 158,400 px are not tested by a clean box: if no build shows a line, "
+    "a rule 'width, or height >= 480, or area >= 158,400' fits as well as 'longest side only'",
+    "the table assumes one limit for land and sea; separate limits are only partly covered (the 'C1k' lines)",
 ]
 
 
@@ -325,32 +384,46 @@ class Exp02c(Experiment):
         if probs:
             raise KitError(f"EXP-02c {build_id} breaks its own rules: " + "; ".join(probs[:5]))
         write_bytes(out, PROV, write_bmp(v.provinces_bmp, rgb_from_pid(pid, v.definition.colors()), keep_tail=True))
-        files, moved = relocate_positions(v, van, pid)
+        files, moved = relocate_positions(v, van, pid, keep_foreign=True)
         for rel, text in sorted(files.items()):
             write_bytes(out, rel, encode(text))
         donors = sorted(set(van[pid != van].tolist()) - {probe.host})
+        kept = foreign_lines(v, van, pid)
         where = v.province_state[probe.host][1] if probe.kind == LAND else v.province_region[probe.host][1]
         nb_van, nb_got = neighbour_counts(van, len(v.types)), neighbour_counts(pid, len(v.types))
         return {"kind": KIND_NAME[probe.kind], "host": probe.host, "shape": [list(r) for r in probe.shape],
                 "box": list(probe.box), "donors": donors, "moved": dict(sorted(moved.items())),
                 "neighbours": int(nb_got[probe.host]), "neighbours_before": int(nb_van[probe.host]),
-                "vanilla_max_neighbours": int(nb_van[1:].max()),
+                "vanilla_max_neighbours": int(nb_van[1:].max()), "kept_foreign": kept,
+                "box_centre_inside": bool(shape_mask(probe.shape, van.shape)[centre_pixel(probe)]),
                 "where": where.rsplit(".", 1)[0], "pixels_before": int(areas(van, len(v.types))[probe.host]),
                 "predictions": {cid: pat[build_id] for cid, (_, pat) in patterns().items()}}
 
     # -------------------------------------------------------------- README
     def outcome_table(self) -> list:
-        short = {b: b.split("EXP-02c-", 1)[1] for b in PROBES}
-        lines = ["What the pattern over the four builds means (LINE = 'Province <host> has TOO LARGE BOX' "
-                 "appears, none = it does not, either = this build only narrows the threshold):"]
+        boxes = run_boxes()
+        short = {b: (b.split("EXP-02c-", 1)[1] if b in PROBES else "strip-full") for b in boxes}
+        lines = ["How to read the five results (LINE = 'Province <host> has TOO LARGE BOX' appears for the test "
+                 "province, for strip-full: for land province 3172; none = it does not; either = this build only "
+                 "narrows the threshold). " + ASSUME]
         for cid, (text, pat) in patterns().items():
             cells = []
-            for b in PROBES:
+            for b in boxes:
                 cell = f"{short[b]} {WORD[pat[b]]}"
                 if pat[b] == "?":
-                    cell += f" (a line means {boxrules.narrows(cid, PROBES[b].boxrule_box())})"
+                    cell += f" (a line means {boxrules.narrows(cid, boxes[b])})"
                 cells.append(cell)
             lines.append(f"{cid}: " + ", ".join(cells) + f" -> {text}")
+        lines.append("Every pattern the rules allow, and which rules give it (C1k = an area limit of its own for land "
+                     "and for sea; G32 / G64 = more than K 32-px / 64-px map tiles touched, a coarse area rule):")
+        for o, fams in outcome_meanings():
+            pat = ", ".join(f"{short[b]} {'LINE' if f else 'none'}" for b, f in zip(boxes, o))
+            lines.append(f"  {pat} -> {' or '.join(fams)}")
+        lines.append("Note: the C2 pattern (strip-full LINE, and of the four only sea-L-330x480) is also given by a "
+                     "G32 / G64 tile rule, so it does not prove 'width + height'; for BBOX_MAX read it as 'w+h and "
+                     "area both matter' and keep both limits. Without strip-full, 'only sea-L-330x480' would also fit "
+                     "a land-only area limit between 66,000 and 90,000 (C1k); strip-full tells them apart: no line "
+                     "there means an area-type rule (C1k or G64), a line means C2 (or G32 / G64).")
         lines.append("Any other pattern (for example lines for both land-440x150 and sea-70x440) matches none of "
                      "these rules: report it as it is.")
         return lines
@@ -393,9 +466,31 @@ class Exp02c(Experiment):
         send = ["Did the game reach the main menu? Did a game start? (yes/no each)",
                 f"Every error.log line that contains 'TOO LARGE BOX', 'fractioned', 'MAP_ERROR' or '{p.host}' "
                 "(copy them exactly), or 'no such line'."]
-        notes = [RUN_NOTE] + self.outcome_table() + [
+        extra = []
+        if not e["box_centre_inside"]:
+            r, c = centre_pixel(p)
+            extra.append(f"The centre of this province's box (row {r}, column {c}) lies OUTSIDE the province, in the "
+                         "empty corner of the L; the four other builds do not have that. A line about the centre or "
+                         "about stack positions of this province may come from it; it is not the box answer. Only "
+                         "'TOO LARGE BOX' is.")
+        if e["neighbours"] > e["vanilla_max_neighbours"]:
+            extra.append(f"The host touches {e['neighbours']} provinces, more than any in the normal game "
+                         f"({e['vanilla_max_neighbours']}). There is precedent: EXP-02-1200's sea host 8337 touched "
+                         "27 and logged only TOO LARGE BOX and stack lines with -debug, and the strip-full hosts "
+                         "touched 77 and 114 and loaded.")
+        kept = e["kept_foreign"]
+        if kept:
+            n = sum(len(x) for x in kept.values())
+            provs = sorted({q for x in kept.values() for _, q in x})
+            outsiders = not (set(provs) & (set(e["donors"]) | {p.host}))
+            extra.append(f"{n} unit-stack lines of province{'s' if len(provs) > 1 else ''} "
+                         f"{', '.join(map(str, provs))}{' (neither host nor donor)' if outsiders else ''} already "
+                         "stood inside this shape in the normal game, outside their own province (a quirk of the "
+                         "normal game). They were left unchanged.")
+        notes = [RUN_NOTE] + self.outcome_table() + extra + [
             "A 'too far away from center' line for this province (unit or ship stacks) came with TOO LARGE BOX "
-            "in EXP-02-1200; copy it too, it does not change the reading.",
+            "in EXP-02-1200; copy it too, it does not change the reading. The same line for the donor provinces is "
+            "expected as well (their stacks were moved into what is left of them): an artefact, not the answer.",
             "If the game does not load, that is not the size rule (TOO LARGE BOX is a warning): send the whole "
             "error log. The kit checked the known fatal cause (a naval strategic region cut in pieces)."]
         return texts.readme(build_id, self.title_for(build_id), prop=prop, why=why, launch=LAUNCH, steps=steps,
@@ -422,5 +517,5 @@ class Exp02c(Experiment):
             text = decode((out / rel).read_bytes()) if rel in present else None
             if text is not None and text == v.text(rel):
                 probs.append(f"{rel} is present but identical to vanilla")
-            probs += position_problems(v, van, got, rel, text)[:5]
+            probs += position_problems(v, van, got, rel, text, keep_foreign=True)[:5]
         return probs

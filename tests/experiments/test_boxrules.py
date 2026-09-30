@@ -77,18 +77,62 @@ def test_grid_families_are_listed_for_the_record():
 
 # ---------------------------------------------------------------- the EXP-02c probe design
 def test_probe_patterns_tell_every_family_apart():
-    from experiments.exp02c import distinct, patterns
+    from experiments.exp02c import TIEBREAK_ID, distinct, patterns
     pats = patterns()
     assert distinct(pats) == []
+    assert all(list(p)[0] == TIEBREAK_ID for _, p in pats.values())      # strip-full is run first
     assert {k: v[1] for k, v in pats.items()} == {
-        "C1": {"EXP-02c-land-440x150": "F", "EXP-02c-sea-70x440": "c", "EXP-02c-land-150x300": "?",
-               "EXP-02c-sea-L-330x480": "F"},
-        "C2": {"EXP-02c-land-440x150": "c", "EXP-02c-sea-70x440": "c", "EXP-02c-land-150x300": "c",
-               "EXP-02c-sea-L-330x480": "F"},
-        "C3": {"EXP-02c-land-440x150": "c", "EXP-02c-sea-70x440": "F", "EXP-02c-land-150x300": "?",
-               "EXP-02c-sea-L-330x480": "F"},
-        "C4": {"EXP-02c-land-440x150": "c", "EXP-02c-sea-70x440": "c", "EXP-02c-land-150x300": "c",
-               "EXP-02c-sea-L-330x480": "c"}}
+        "C1": {TIEBREAK_ID: "?", "EXP-02c-land-440x150": "F", "EXP-02c-sea-70x440": "c",
+               "EXP-02c-land-150x300": "?", "EXP-02c-sea-L-330x480": "F"},
+        "C2": {TIEBREAK_ID: "F", "EXP-02c-land-440x150": "c", "EXP-02c-sea-70x440": "c",
+               "EXP-02c-land-150x300": "c", "EXP-02c-sea-L-330x480": "F"},
+        "C3": {TIEBREAK_ID: "F", "EXP-02c-land-440x150": "c", "EXP-02c-sea-70x440": "F",
+               "EXP-02c-land-150x300": "?", "EXP-02c-sea-L-330x480": "F"},
+        "C4": {TIEBREAK_ID: "F", "EXP-02c-land-440x150": "c", "EXP-02c-sea-70x440": "c",
+               "EXP-02c-land-150x300": "c", "EXP-02c-sea-L-330x480": "c"}}
+
+
+def _run_boxes():
+    from experiments.exp02c import run_boxes
+    return list(run_boxes().values())
+
+
+def test_main_families_have_disjoint_outcomes_over_every_threshold():
+    boxes = _run_boxes()
+    assert boxrules.ambiguous(boxes, boxrules.MAIN) == []
+    assert boxrules.outcomes("C2", boxes) == {(True, False, False, False, True)}
+    assert boxrules.outcomes("C4", boxes) == {(True, False, False, False, False)}
+
+
+def test_what_stays_ambiguous_is_exactly_the_documented_set():
+    """Review P00b-f6 r1 finding 1: the C2 row is shared with the tile rules; the land-only area limit is split
+    off by strip-full; C1k overlaps C1 (the same reading: area)."""
+    boxes = _run_boxes()
+    assert boxrules.ambiguous(boxes) == [("C1", "C1k"), ("C1", "G32"), ("C2", "G32"), ("C2", "G64"),
+                                         ("C1k", "G32"), ("C1k", "G64"), ("G32", "G64")]
+    c2_row = (True, False, False, False, True)
+    assert boxrules.explain(c2_row, boxes) == ["C2", "G32", "G64"]
+    land_area_row = (False, False, False, False, True)          # strip-full none, only sea-L of the four
+    assert boxrules.explain(land_area_row, boxes) == ["C1k", "G64"]
+    without_tiebreak = boxes[1:]                                # the r1 design: C2 and C1k share a row
+    assert ("C2", "C1k") in boxrules.ambiguous(without_tiebreak) or \
+        ("C1k", "C2") in boxrules.ambiguous(without_tiebreak, ["C1k", "C2"])
+
+
+def test_tiebreak_is_strip_full_land_host():
+    t = boxrules.TIEBREAK
+    assert (t.label, t.pid, t.kind, t.w, t.h, t.w * t.h) == ("EXP-02b-strip-full", 3172, "land", 2188, 14, 30632)
+    assert t.flagged is None                                    # not yet run with -debug
+
+
+def test_outcomes_follow_the_intervals_on_a_toy_set():
+    toy = (boxrules.Box("t", 1, "land", 0, 99, 0, 9, 1000, False),            # 100 x 10: clean
+           boxrules.Box("t", 2, "land", 0, 99, 0, 99, 10000, True))           # 100 x 100: flagged
+    probes = [boxrules.probe_box(50, 100, 0, 0), boxrules.probe_box(10, 10, 0, 0)]
+    out = boxrules.outcomes("C1", [dataclasses.replace(b, kind="land") for b in probes], obs=toy)
+    assert out == {(True, False), (False, False)}                             # 5,000 inside [1000, 10000)
+    with pytest.raises(KeyError):
+        boxrules.outcomes("C9", probes)
 
 
 def test_distinct_reports_families_one_outcome_cannot_separate():
@@ -101,10 +145,10 @@ def test_docstring_table_matches_the_patterns():
     from experiments import exp02c
     word = exp02c.WORD
     rows = {ln.split()[0]: ln.split()[-4:] for ln in exp02c.__doc__.splitlines()
-            if ln.strip().startswith(("land-", "sea-"))}
+            if ln.startswith(("    land-", "    sea-", "    strip-full"))}
     pats = exp02c.patterns()
-    for bid in exp02c.PROBES:
-        short = bid.split("EXP-02c-", 1)[1]
+    for bid in [exp02c.TIEBREAK_ID] + list(exp02c.PROBES):
+        short = bid.split("EXP-02c-", 1)[1] if bid in exp02c.PROBES else "strip-full"
         assert rows[short] == [word[pats[c][1][bid]] for c in ("C1", "C2", "C3", "C4")], short
 
 

@@ -1,6 +1,9 @@
 """All experiments in build order (EXP-07 last: low priority)."""
 from __future__ import annotations
 
+# build IDs that were withdrawn: never built, listed or installed again (P00b-f6: they cut naval regions in pieces)
+RETIRED = ("EXP-02b-block-800-sea", "EXP-02b-block-800-land")
+
 
 def experiments():
     from .exp01 import Exp01

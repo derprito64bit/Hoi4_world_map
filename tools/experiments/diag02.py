@@ -12,7 +12,8 @@ vanilla); writes nothing. Prints:
    engine box, w*h, w+h and pixel count, with the -debug observation;
 3. which single-metric rules the observations reject and which candidate families survive
    (``boxrules.candidates``), with their threshold intervals;
-4. the prediction of each surviving family for every EXP-02c probe build.
+4. the prediction of each surviving family for strip-full (the tie-breaker) and every EXP-02c probe,
+   and every possible outcome with the families that allow it (``boxrules.outcomes``).
 
 Exit 1 if a pinned box in ``OBSERVED`` or a built probe's host box differs from the map (a build or
 the game changed), or if two candidate families predict patterns no outcome can tell apart.
@@ -83,7 +84,7 @@ def main(argv=None) -> int:
     game = game_dir()
     if game is None:
         raise SystemExit("HOI4_GAME_DIR is not set (or not a HOI4 install)")
-    from experiments.exp02c import PROBES, distinct, patterns
+    from experiments.exp02c import PROBES, TIEBREAK_ID, distinct, outcome_meanings, patterns, run_boxes
     pid, d = load_map(None, game)
     print("== vanilla 1.19.3: maximum of each metric over all provinces")
     for name, (v, i) in vanilla_maxima(pid, d).items():
@@ -116,6 +117,9 @@ def main(argv=None) -> int:
         print(f"  (grid, not separated by the probes) {f.name} > K, K in [{f.lo}, {f.hi})")
     print("== predictions for the EXP-02c probes (F = TOO LARGE BOX, c = clean, ? = depends on the threshold)")
     print("  " + " " * 30 + "  ".join(f"{cid:>3s}" for cid, _, _ in cands) + "   box w x h, w*h, w+h")
+    t = boxrules.TIEBREAK
+    print(f"  {TIEBREAK_ID + ' (land ' + str(t.pid) + ')':30s}" + "  ".join(f"{fn(t):>3s}" for _, _, fn in cands)
+          + f"   {t.w} x {t.h}, {t.w * t.h}, {t.w + t.h}, tie-breaker: run first, with -debug")
     for bid, p in PROBES.items():
         b = p.boxrule_box()
         where = find_build(roots, bid)
@@ -128,8 +132,16 @@ def main(argv=None) -> int:
         print(f"  {bid:30s}" + "  ".join(f"{fn(b):>3s}" for _, _, fn in cands)
               + f"   {p.w} x {p.h}, {p.w * p.h}, {p.w + p.h}{seen}")
     same = distinct(patterns())
-    print("  families the four builds cannot tell apart: " + (", ".join(f"{a}/{b}" for a, b in same) or "none"))
-    return 1 if drift or same else 0
+    run = list(run_boxes().values())
+    exact = boxrules.ambiguous(run, boxrules.MAIN)
+    print("  main families the five results cannot tell apart: "
+          + (", ".join(f"{a}/{b}" for a, b in sorted(set(same) | set(exact))) or "none"))
+    print("  also sharing an outcome (documented, incl. C1k / G32 / G64): "
+          + ", ".join(f"{a}/{b}" for a, b in boxrules.ambiguous(run)))
+    print("== every possible outcome (strip-full, then the probes; 1 = TOO LARGE BOX) and the rules that give it")
+    for o, fams in outcome_meanings():
+        print("  " + "".join("1" if f else "0" for f in o) + "  " + " or ".join(fams))
+    return 1 if drift or same or exact else 0
 
 
 if __name__ == "__main__":
