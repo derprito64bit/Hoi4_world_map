@@ -312,3 +312,20 @@ def test_cli_dry_run_uninstall_reports_would_delete(uk, monkeypatch, capsys):
 def test_parse_top_level():
     kv = inst.parse_top_level('\ufeffa="1"\r\nb = { c="2" d={ e=3 } }\tf=bare # x\n#g="4"\nh="with # hash"')
     assert kv == {"a": ["1"], "b": [None], "f": ["bare"], "h": ["with # hash"]}
+
+
+@pytest.mark.parametrize("bid", ["EXP-02b-block-800-sea", "EXP-02b-block-800-land"])
+def test_refuses_retired_builds_even_when_a_stale_folder_exists(setup, tmp_path, bid):
+    """P00b-f6: the block-800 builds were retired; an old folder below build/ must not be installable."""
+    from experiments.registry import RETIRED
+    user, build = setup
+    assert bid in RETIRED
+    (build / bid).mkdir()
+    (build / bid / "descriptor.mod").write_text(f'name="P00b {bid} old"\nversion="1"\n', encoding="utf-8")
+    before = snapshot(tmp_path)
+    with pytest.raises(KitError, match="retired"):
+        inst.install(bid, user, build_root=build)
+    with pytest.raises(KitError, match="retired"):
+        inst.install(bid, user, build_root=build, dry_run=True)
+    assert snapshot(tmp_path) == before
+    assert inst.uninstall(bid, user, build_root=build) is None      # uninstall stays possible (nothing there)
