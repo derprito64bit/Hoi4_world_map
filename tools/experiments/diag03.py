@@ -97,6 +97,18 @@ def features(pid: np.ndarray, d: Definition) -> dict:
             "rgb_byte_255": int((cols == 255).any(1).sum())}
 
 
+def unsafe_why(c) -> str:
+    """The clauses of ``RegionCentre.unsafe`` that fired (non-wrapping regions)."""
+    why = []
+    if c.fallback_strict and c.dx == 0:
+        why.append("dx = 0 (old boxes)")
+    if c.fallback and c.dy == 0:
+        why.append("dy = 0 (old boxes, flagged only as caution)")
+    if c.crash_g2:
+        why.append("grid dx = 0" + ("" if c.fallback_g2 else " (mean on a grid-box edge: open bound only)"))
+    return " and ".join(why) or "-"
+
+
 def report(label: str, build: Path | None, game: Path, observed: dict | None = None) -> tuple:
     """Print one build's features and region-centre report; returns (guard failures, centres).
 
@@ -121,8 +133,7 @@ def report(label: str, build: Path | None, game: Path, observed: dict | None = N
           f"{[c.region for c in cs.values() if c.crash_g2] or '-'}")
     for c in cs.values():
         if c.unsafe:
-            why = " and ".join(w for w, z in (("dx", c.dx), ("dy", c.dy)) if z == 0 and c.unsafe_old) or "grid dx"
-            print(f"   UNSAFE region {c.region} {names.get(c.region, '?')}: {why} = 0, {c.n} provinces, mean point "
+            print(f"   UNSAFE region {c.region} {names.get(c.region, '?')}: {unsafe_why(c)}, {c.n} provinces, mean point "
                   f"{c.mean}, rect {c.rect}, gap to nearest box {c.gap} px"
                   + ("" if c.fallback_all else " (fallback only under the strictest box convention)")
                   + f"; grid model: mean {c.mean_g2}, rect {c.rect_g2}, dx {c.dx_g2}"

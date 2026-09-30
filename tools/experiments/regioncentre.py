@@ -15,19 +15,22 @@ READ FROM THE DISASSEMBLY (not executed, not observed in memory)
   * Before the fallback, each member box is tested with ``x0 <= M.x <= x0 + w`` (the same for y);
     the first hit becomes the centre and nothing is divided.
   * The fallback computes ``(...) / (M.x - (rx0 + rw/2))``. The routine contains exactly
-    this one ``idiv``; a division by the y difference was not seen in it. The routine
-    it calls next (RVA 0x15A4E90) was not read.
+    this one ``idiv``; there is no division by the y difference in it. The routine the caller
+    runs next (RVA 0x15A4E90) was read in P00b-f5: it has no integer division (see below).
   * A region with 0 provinces returns early (no division).
   * The routine first tests M against the region rectangle; if M is outside it, it reads a
     second rectangle stored 16 bytes further on. What that second rectangle holds (probably
     the wrapped part of a region crossing the seam) was not observed.
 INFERRED (only a fit to the dump numbers)
-  * The stored box width. Two conventions reproduce the dump exactly:
+  * The stored box width. Two conventions fit the mean and the rect of the dump:
     (A) w = span + 1 (span = xmax - xmin), rect = union + 1;
     (B) w = span + 2, centre x0 + (w - 1)/2, rect = plain union.
     Both give the same centre and rect (region 191 in 24k: xmax - xmin = 300, i.e.
     301 columns, rect width 302), but the upper bound of the inside test is xmax + 1
-    in (A) and xmax + 2 in (B).
+    in (A) and xmax + 2 in (B). SUPERSEDED in P00b-f5: the engine box of province 19700
+    found in the dump, (3164, 1952, 16, 16), rules out both (A gives w 15, B gives h 17);
+    only the 2-px grid below fits all three observations. (A) and (B) are kept as the "old"
+    model because the guard stays the union of the old and the grid model.
   * The compare direction. The disassembly reads ``jl`` / ``jg`` (inclusive at both ends),
     but that reading is the only source: nothing observed decides whether the bounds are
     ``<=`` or ``<``. So each end may be exclusive: the lower bound xmin + 1, the upper xmax.
@@ -41,12 +44,16 @@ What the model does, conservatively:
   * ``fallback`` (used for the dy test): the inclusive lower bound, xmin <= M <= xmax.
     The dy test cannot use the strict lower bound: vanilla region 1 has dx 10, dy 0 and its
     mean lies on a box's lower edge, so "strict lower bound" and "the engine divides by dy"
-    cannot both be true, and vanilla loads. dy == 0 is only flagged because the next
-    routine was not read; dx == 0 is the observed crash, so it gets the stricter test.
+    cannot both be true, and vanilla loads. dy == 0 was flagged because the next routine
+    had not been read (P00b-f5 read it: no division; the flag is kept only as caution);
+    dx == 0 is the observed crash, so it gets the stricter test.
   * ``fallback_all``: outside every member box even with the widest convention.
-  * ``unsafe``: not wrapping and ((fallback_strict and dx == 0) or (fallback and dy == 0)).
-  * ``unknown``: fallback_strict in a region whose members cover column 0 AND column W-1
-    (it wraps). The model does not cover these.
+  * ``unsafe_old``: not wrapping and ((fallback_strict and dx == 0) or (fallback and dy == 0)).
+  * ``unsafe`` (current, P00b-f5 r2): ``unsafe_old`` OR ``crash_g2``, where ``crash_g2`` = not
+    wrapping and ``fallback_g2_strict`` and dx_g2 == 0 (the 2-px grid model, see below).
+  * ``unknown``: a region whose members cover column 0 AND column W-1 (it wraps) and whose
+    mean misses the member boxes under ``fallback_strict`` or ``fallback_g2_strict``. The
+    model does not cover these.
   * Guards (``guard_failures``) reject unsafe regions and unknown regions without an
     identical twin in a map observed loading. For new geometry pass ``observed = {}``:
     then every wrapping region that takes the fallback fails. ``unsafe_regions`` alone
@@ -96,12 +103,15 @@ INFERRED (fit): the engine boxes lie on a 2-px grid (``engine_boxes``): x0 = 2 *
     region with the fallback and dx_g2 == 0; 24k has exactly region 191. EXP-08/09 have none.
   * What is still unknown: the rule is fitted to one region of one map plus that one load; the
     wrapping (seam) regions and the second rect are still not observed.
-What the model does now (conservative): ``crash_g2`` is the 2-px-grid prediction (exact
-  inclusive test, dx only). ``unsafe`` = the old conservative rule OR ``crash_g2``, so nothing the
-  old model flagged becomes SAFE (EXP-03-div0 region 193 stays flagged although it loaded). Only
-  when the owner's EXP-03-191only / EXP-03-div0b runs confirm the grid rule should the old rule be
-  retired; that decision is not taken here. ``unknown`` also counts wrapping regions whose mean
-  misses every grid box.
+What the model does now (conservative): ``fallback_g2`` is the inclusive grid test as read
+  (``jl`` / ``jg``); ``fallback_g2_strict`` (P00b-f5 r2) counts M as inside a grid box only when
+  bx < M < bx + bw and by < M < by + bh (open at both ends), because, as for the old model, nothing
+  observed decides the compare direction. ``crash_g2`` = not wrapping and fallback_g2_strict and
+  dx_g2 == 0, i.e. grid dx 0 under the inclusive OR the strict bound (strict-outside includes
+  inclusive-outside). ``unsafe`` = ``unsafe_old`` OR ``crash_g2``, so nothing the old model flagged
+  becomes SAFE (EXP-03-div0 region 193 stays flagged although it loaded). Only when the owner's
+  EXP-03-191only / -div0c / -div0b runs confirm the grid rule should the old rule be retired; that
+  decision is not taken here. ``unknown`` also counts wrapping regions with fallback_g2_strict.
 
 Rules for the real map (P05 and the region builder):
   * ``guard_failures(region_centres(pid, regions), observed)`` must be empty (``observed``
@@ -152,6 +162,7 @@ class RegionCentre:
     rect_g2: tuple = (0, 0, 0, 0)
     fallback_g2: bool = False       # mean outside every grid box (inclusive test, as in RVA 0x15A5C20)
     dx_g2: int = 0                  # mean_g2.x - (rect_g2 x0 + w/2): the divisor on the grid model
+    fallback_g2_strict: bool = False  # mean outside every grid box with open bounds (bx < M < bx + bw; r2)
 
     @property
     def divisor(self):
@@ -164,8 +175,10 @@ class RegionCentre:
 
     @property
     def crash_g2(self) -> bool:
-        """The 2-px-grid model's prediction of the RVA 0x15A4CDC divide by zero (non-wrapping regions)."""
-        return not self.seam and self.fallback_g2 and self.dx_g2 == 0
+        """The 2-px-grid model's divide by zero at RVA 0x15A4CDC (non-wrapping regions), conservative across
+        compare conventions: grid dx 0 with the mean outside every grid box under the inclusive OR the open
+        bound (outside-inclusive implies outside-open, so the open test alone decides)."""
+        return not self.seam and (self.fallback_g2 or self.fallback_g2_strict) and self.dx_g2 == 0
 
     @property
     def unsafe(self) -> bool:
@@ -174,7 +187,7 @@ class RegionCentre:
 
     @property
     def unknown(self) -> bool:
-        return self.seam and (self.fallback_strict or self.fallback_g2)
+        return self.seam and (self.fallback_strict or self.fallback_g2 or self.fallback_g2_strict)
 
     @property
     def clear(self) -> bool:
@@ -213,19 +226,22 @@ def engine_boxes(x0, x1, y0, y1, grid: int = GRID):
 
 
 def grid_centre(x0, x1, y0, y1, grid: int = GRID) -> tuple:
-    """(mean, rect, fallback, dx) of one region on engine boxes, as in RVA 0x15A4770 / 0x15A5C20 / 0x15A4C20.
+    """(mean, rect, fallback, fallback_strict, dx) of one region on engine boxes (RVA 0x15A4770 / 0x15A5C20 /
+    0x15A4C20).
 
     mean = truncating mean of ``x0 + w/2, y0 + h/2``; rect = union of the member boxes; fallback = the
-    mean lies in no member box (inclusive at both ends); dx = mean.x - (rect x0 + rect w / 2).
+    mean lies in no member box with the inclusive test as read (bx <= M <= bx + bw); fallback_strict = the
+    same with open bounds (bx < M < bx + bw), the other compare convention; dx = mean.x - (rect x0 + w / 2).
     """
     bx, by, bw, bh = engine_boxes(x0, x1, y0, y1, grid)
     n = len(bx)
     mx = _trunc_div(int((bx + bw // 2).sum()), n)
     my = _trunc_div(int((by + bh // 2).sum()), n)
     inside = bool(((bx <= mx) & (mx <= bx + bw) & (by <= my) & (my <= by + bh)).any())
+    inside_open = bool(((bx < mx) & (mx < bx + bw) & (by < my) & (my < by + bh)).any())
     rx0, ry0 = int(bx.min()), int(by.min())
     rw, rh = int((bx + bw).max()) - rx0, int((by + bh).max()) - ry0
-    return (mx, my), (rx0, ry0, rw, rh), not inside, mx - (rx0 + rw // 2)
+    return (mx, my), (rx0, ry0, rw, rh), not inside, not inside_open, mx - (rx0 + rw // 2)
 
 
 def _trunc_div(a: int, b: int) -> int:
@@ -276,10 +292,11 @@ def region_centre(rid: int, members, boxes, W: int) -> RegionCentre:
     gap = int(np.maximum(gx, gy).min())
     seam = bool((x0 == 0).any() and (x1 == W - 1).any())
     sig = hashlib.sha256(np.stack([x0, x1, y0, y1], 1).astype("<i8").tobytes()).hexdigest()[:16]
-    gmean, grect, gfb, gdx = grid_centre(x0, x1, y0, y1)
+    gmean, grect, gfb, gfbs, gdx = grid_centre(x0, x1, y0, y1)
     return RegionCentre(rid, len(ids), (mx, my), (rx0, ry0, rw, rh), not inside[min(INSIDE_SLACK)],
                         not inside[max(INSIDE_SLACK)], mx - (rx0 + rw // 2), my - (ry0 + rh // 2), gap, seam, sig,
-                        not inside_strict, inner_margin(mx, my, x0, x1, y0, y1), gmean, grect, gfb, gdx)
+                        not inside_strict, inner_margin(mx, my, x0, x1, y0, y1), gmean, grect, gfb, gdx,
+                        gfbs)
 
 
 def region_centres(pid: np.ndarray, regions: dict) -> dict:
@@ -324,7 +341,8 @@ def guard_failures(centres: dict, observed: dict | None = None) -> list:
 
 def describe(c: RegionCentre) -> str:
     return (f"{c.region} ({c.n} provinces, mean {c.mean}, rect {c.rect}, dx {c.dx}, dy {c.dy}, "
-            f"margin {c.margin}, grid model dx {c.dx_g2}{' fallback' if c.fallback_g2 else ''}"
+            f"margin {c.margin}, grid model dx {c.dx_g2}"
+            f"{' fallback' if c.fallback_g2 else (' fallback (open bound)' if c.fallback_g2_strict else '')}"
             f"{', wraps' if c.seam else ''})")
 
 

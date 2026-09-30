@@ -38,7 +38,8 @@ bisect variants were added:
                   crash at the same code address. It LOADED in game (2026-09-29).
 
 P00b-f5 (the div0 surprise; regioncentre.py explains it with 2-px-grid engine boxes,
-under which div0's region 193 has divisor +1). Two probes:
+under which div0's region 193 has divisor +1). Three probes (owner run order: 191only, div0c,
+div0b):
 
 * EXP-03-191only  locality: vanilla plus ONLY the 24k cuts of parents inside region 191
                   (same pieces, same pixels; new IDs renumbered contiguously after the
@@ -46,6 +47,9 @@ under which div0's region 193 has divisor +1). Two probes:
                   Region 191's member boxes are identical to 24k's (pinned signature).
 * EXP-03-div0b    vanilla plus the pieces of ONE land province, chosen so that one region
                   divides by zero under the old conventions AND under the grid model.
+* EXP-03-div0c    (r2) vanilla plus the pieces of ONE land province, chosen so that one
+                  region divides by zero ONLY under the grid model (old dx != 0): the
+                  sharpest test of the grid rule.
 """
 from __future__ import annotations
 
@@ -78,9 +82,12 @@ LOCAL_REGION = DUMP_REGION              # 191 Northern Norway
 # member-box signature of region 191 in EXP-03-24k (RegionCentre.signature); 191only must reproduce it
 LOCAL_SIGNATURE = "9607ba7cd8a9375c"
 TRAP2_VARIANT = "div0b"                 # P00b-f5: one split province, divisor 0 under the old AND the grid model
-TRAPS = (TRAP_VARIANT, TRAP2_VARIANT)
-PROBES = (FIX_VARIANT, TRAP_VARIANT, LOCAL_VARIANT, TRAP2_VARIANT)   # owner sheets from readme_bisect
-VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None, LOCAL_VARIANT: None, TRAP2_VARIANT: None}
+TRAP3_VARIANT = "div0c"                 # P00b-f5 r2: one split province, divisor 0 ONLY under the grid model
+TRAPS = (TRAP_VARIANT, TRAP2_VARIANT, TRAP3_VARIANT)
+PROBES = (FIX_VARIANT, TRAP_VARIANT, LOCAL_VARIANT, TRAP2_VARIANT, TRAP3_VARIANT)
+F5_PROBES = (LOCAL_VARIANT, TRAP3_VARIANT, TRAP2_VARIANT)      # owner run order (readme_probe)
+VARIANTS = {**TARGETS, FIX_VARIANT: TARGETS["24k"], TRAP_VARIANT: None, LOCAL_VARIANT: None, TRAP2_VARIANT: None,
+            TRAP3_VARIANT: None}
 # EXP-03-24k is kept byte-identical as the record of the in-game crash (2026-09-29, dump: region 191
 # Northern Norway), so --check requires it to stay unsafe. The bisect (2026-09-29): 24k-fix loaded and div0
 # loaded too. P00b-f5 added the 2-px-grid model (regioncentre.py): 191 stays unsafe in 24k and in 191only;
@@ -343,7 +350,7 @@ def model_values(c) -> dict:
     """The region-centre model's numbers for one region (README / build meta)."""
     return {"members": c.n, "mean": list(c.mean), "rect": list(c.rect), "dx": c.dx, "dy": c.dy,
             "fallback_all": c.fallback_all, "mean_g2": list(c.mean_g2), "rect_g2": list(c.rect_g2),
-            "fallback_g2": c.fallback_g2, "dx_g2": c.dx_g2, "unsafe_old": c.unsafe_old, "crash_g2": c.crash_g2,
+            "fallback_g2": c.fallback_g2, "fallback_g2_strict": c.fallback_g2_strict, "dx_g2": c.dx_g2, "unsafe_old": c.unsafe_old, "crash_g2": c.crash_g2,
             "signature": c.signature}
 
 
@@ -408,6 +415,12 @@ def _is_trap(c) -> bool:
 def _is_trap_both(c) -> bool:
     """div0b (P00b-f5): the old condition (``_is_trap``) AND the grid model's predicted crash."""
     return _is_trap(c) and c.crash_g2
+
+
+def _is_trap_grid_only(c) -> bool:
+    """div0c (P00b-f5 r2): grid dx 0 with the mean outside every grid box even under the inclusive test as
+    read, while the old model sees no division by zero at all (old dx != 0 and not ``unsafe_old``)."""
+    return c.crash_g2 and c.fallback_g2 and not c.unsafe_old and c.dx != 0
 
 
 def _takes_fallback(c) -> bool:
@@ -575,6 +588,8 @@ class Exp03(Experiment):
             return "vanilla + only the 24k cuts in region 191 Northern Norway (locality probe, expected CRASH)"
         if k == TRAP2_VARIANT:
             return "vanilla + one split province, division by zero under both box models (expected CRASH)"
+        if k == TRAP3_VARIANT:
+            return "vanilla + one split province, division by zero only under the 2-px grid model (expected CRASH)"
         t = f"{VARIANTS[k]:,} provinces"
         if k == FIX_VARIANT:
             return t + ", region-centre guard"
@@ -613,7 +628,9 @@ class Exp03(Experiment):
         info = {}
         if key in TRAPS:
             region_of = region_lookup(v, n0)
-            opts = {} if key == TRAP_VARIANT else {"pred": _is_trap_both, "include": _takes_any_fallback}
+            opts = ({} if key == TRAP_VARIANT else
+                    {"pred": _is_trap_both if key == TRAP2_VARIANT else _is_trap_grid_only,
+                     "include": _takes_any_fallback})
             pid, root, (rid, p, k) = trap_split(van_pid, types, region_of, keep_pixel, coastal_needed, frozen, **opts)
             info["trap"] = {"region": rid, "province": p, "pieces": k,
                             "region_file": v.province_region[p][1], "state_file": v.province_state[p][1],
@@ -761,7 +778,7 @@ class Exp03(Experiment):
 
     # -------------------------------------------------------------- README
     def readme(self, ctx, build_id, info):
-        if self.key(build_id) in (LOCAL_VARIANT, TRAP2_VARIANT):
+        if self.key(build_id) in F5_PROBES:
             return self.readme_probe(ctx, build_id, info)
         if self.key(build_id) in PROBES:
             return self.readme_bisect(ctx, build_id, info)
@@ -850,7 +867,7 @@ class Exp03(Experiment):
                           "tests the region-centre explanation."])
 
     def readme_probe(self, ctx, build_id, info):
-        """Owner sheet for the two P00b-f5 probes (191only, div0b); both are expected to crash."""
+        """Owner sheet for the three P00b-f5 probes (191only, div0c, div0b); all are expected to crash."""
         ud = str(ctx.user).replace("\\", "/") if ctx.user else "$HOI4_USER_DIR"
         crash_send = (f"If it crashed: the newest folder in {ud}/crashes/ -> open exception.txt with Notepad and copy "
                       "the lines from 'Unhandled Exception' down to line 3 of the Stack Trace. Keep that crash folder "
@@ -866,16 +883,16 @@ class Exp03(Experiment):
             return (f"Model values for {label}: {m['members']} provinces; old box model: mean point {tuple(m['mean'])}, "
                     f"region rectangle {tuple(m['rect'])}, divisor {m['dx']}; 2-px grid model: mean point "
                     f"{tuple(m['mean_g2'])}, rectangle {tuple(m['rect_g2'])}, divisor {m['dx_g2']}; the mean lies in "
-                    f"no member box under either model: {m['fallback_all'] and m['fallback_g2']}.")
+                    f"no member box: old model {m['fallback_all']}, grid model {m['fallback_g2']}.")
         notes = ["Background: EXP-03-24k crashed (divide by zero in the centre calculation of strategic region 191, "
                  "Northern Norway). EXP-03-div0 was built to hit the same division in region 193 and LOADED, so our "
                  "first model was incomplete. Reading the crash dump again suggests that the game stores province "
                  "boxes on a 2-pixel grid (one province box left in the dump is 1 px wider than its pixels; the "
                  "grid rule fits every number in the dump, but it is a fit, not proven). With that correction the "
-                 "model reproduces the 24k crash and says div0 should load (its divisor becomes +1). These two "
+                 "model reproduces the 24k crash and says div0 should load (its divisor becomes +1). These three "
                  "builds test the corrected model.",
-                 "Run order: EXP-03-191only first, then EXP-03-div0b. Report both results even if the first one is "
-                 "not what we expect."]
+                 "Run order: EXP-03-191only first, then EXP-03-div0c, then EXP-03-div0b. Report all three results "
+                 "even if an earlier one is not what we expect."]
         if self.key(build_id) == LOCAL_VARIANT:
             t = info["local"]
             ps = ", ".join(str(p) for p in t["parents"])
@@ -896,6 +913,21 @@ class Exp03(Experiment):
                                "the offset is what counts.")
             notes = [expected_result, values(t["model"], f"region {t['region']} in this build (the same as in "
                                                          "EXP-03-24k and in both 24k crash dumps)")] + notes
+        elif self.key(build_id) == TRAP3_VARIANT:
+            t = info["trap"]
+            prop = (f"Vanilla map plus ONE extra change: vanilla land province {t['province']} (state file "
+                    f"'{t['state_file']}') is cut into {t['pieces']} pieces. The cut is chosen so that ONLY the "
+                    "corrected 2-pixel-grid model predicts that the game's centre calculation for strategic region "
+                    f"{t['region']} ('{t['region_file']}') divides by zero; the first model predicts no division by "
+                    f"zero here (its divisor is {t['model']['dx']}). This is the mirror image of EXP-03-div0 (first "
+                    "model 0, grid +1; it loaded).")
+            why = ("The sharpest test of the corrected model: only the 2-pixel-grid model predicts this crash. If this "
+                   "crashes at the same place as EXP-03-24k, the grid model is strongly supported. If it loads, the "
+                   "grid model is wrong or incomplete (EXP-03-div0b then tells us more).")
+            expected_result = (f"EXPECTED IN GAME (grid model): crash while loading with EXCEPTION_INT_DIVIDE_BY_ZERO at "
+                               f"hoi4.exe offset 0x{CRASH_RVA:X} (0x7FF6129C4CDC in the 2026-09-29 dumps). The first "
+                               "model would expect it to load.")
+            notes = [expected_result, values(t["model"], f"region {t['region']} in this build")] + notes
         else:
             t = info["trap"]
             prop = (f"Vanilla map plus ONE extra change: vanilla land province {t['province']} (state file "
@@ -903,11 +935,13 @@ class Exp03(Experiment):
                     f"centre calculation for strategic region {t['region']} ('{t['region_file']}') divides by zero "
                     "under the first model AND under the corrected 2-pixel-grid model. (EXP-03-div0 cut a different "
                     "province of region 193: divisor 0 under the first model, +1 under the corrected one; it loaded.)")
-            why = ("Tests the corrected model. If this crashes at the same place as EXP-03-24k, the 2-pixel-grid model "
-                   "explains all three results (24k crash, div0 load, this crash). If it loads, a divisor of 0 is "
-                   "still not enough for the crash and the model remains unconfirmed.")
-            expected_result = (f"EXPECTED IN GAME: crash while loading with EXCEPTION_INT_DIVIDE_BY_ZERO at hoi4.exe "
-                               f"offset 0x{CRASH_RVA:X} (0x7FF6129C4CDC in the 2026-09-29 dumps).")
+            why = ("Both models predict this crash, so a crash here confirms less than a crash in EXP-03-div0c (where "
+                   "only the grid model predicts one): it fits the grid model, and also the first model plus some "
+                   "unknown extra condition. If it loads, a divisor of 0 is still not enough for the crash under "
+                   "either model and the explanation remains unconfirmed.")
+            expected_result = (f"EXPECTED IN GAME (both models predict it): crash while loading with "
+                               f"EXCEPTION_INT_DIVIDE_BY_ZERO at hoi4.exe offset 0x{CRASH_RVA:X} (0x7FF6129C4CDC in "
+                               "the 2026-09-29 dumps).")
             notes = [expected_result, values(t["model"], f"region {t['region']} in this build")] + notes
         return texts.readme(
             build_id, self.title_for(build_id), prop=prop, why=why, launch=launch, steps=steps, send=send,
@@ -963,6 +997,10 @@ class Exp03(Experiment):
             want_fails = sorted({int(region_of[p]) for p in parents})
             if len(parents) != 1:
                 probs.append(f"{key}: new pieces come from {len(parents)} provinces, expected exactly one")
+            elif key == TRAP3_VARIANT:
+                if not all(_is_trap_grid_only(cs[r]) for r in want_fails):
+                    probs.append(f"{key}: region {want_fails} is not a grid-only division by zero "
+                                 "(grid dx 0 with the inclusive test, old model safe)")
             elif not all(cs[r].fallback_all and cs[r].dx == 0 for r in want_fails):
                 probs.append(f"{key}: region {want_fails} is not the observed dx == 0 case under every convention")
             elif key == TRAP2_VARIANT and not all(cs[r].crash_g2 for r in want_fails):

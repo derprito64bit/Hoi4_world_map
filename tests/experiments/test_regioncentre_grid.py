@@ -29,14 +29,69 @@ def test_engine_boxes_snap_both_ends_to_the_grid(xmin, xmax, box):
     assert (int(bx[0]), int(bw[0])) == box
 
 
-def test_grid_centre_uses_the_inclusive_member_test():
-    """RVA 0x15A5C20: x0 <= M.x <= x0 + w (inclusive at both ends, the grid box end is xmax rounded up + 1)."""
+def test_grid_centre_inside_and_outside():
     # box 1 pixels x 0..9 -> grid 0..10; box 2 pixels x 12..13 -> grid 12..14; centres 5 and 13 -> mean 9
-    mean, rect, fallback, dx = grid_centre(np.array([0, 12]), np.array([9, 13]), np.array([0, 0]), np.array([1, 1]))
-    assert mean == (9, 1) and rect == (0, 0, 14, 2) and not fallback and dx == 9 - 7
+    mean, rect, fallback, strict, dx = grid_centre(np.array([0, 12]), np.array([9, 13]), np.array([0, 0]),
+                                                   np.array([1, 1]))
+    assert mean == (9, 1) and rect == (0, 0, 14, 2) and not fallback and not strict and dx == 9 - 7
     # move box 2 (pixels 16..17 -> grid 16..18, centre 17) so that the mean (11) falls between 10 and 16
-    mean, rect, fallback, dx = grid_centre(np.array([0, 16]), np.array([9, 17]), np.array([0, 0]), np.array([1, 1]))
-    assert mean == (11, 1) and fallback and rect == (0, 0, 18, 2) and dx == 11 - 9
+    mean, rect, fallback, strict, dx = grid_centre(np.array([0, 16]), np.array([9, 17]), np.array([0, 0]),
+                                                   np.array([1, 1]))
+    assert mean == (11, 1) and fallback and strict and rect == (0, 0, 18, 2) and dx == 11 - 9
+
+
+# Two members side by side along one axis (the other axis: pixels 0..9 -> grid 0..10, centre 5).
+#   "upper": box 1 pixels 0..9 (grid 0..10, centre 5), box 2 pixels 14..15 (grid 14..16, centre 15):
+#            mean 10 = box 1's upper grid edge (bx + bw), outside box 2
+#   "lower": box 1 pixels 0..1 (grid 0..2, centre 1), box 2 pixels 6..15 (grid 6..16, centre 11):
+#            mean 6 = box 2's lower grid edge (bx), outside box 1
+#   None:    box 1 pixels 0..9 (grid 0..10), box 2 pixels 16..17 (grid 16..18, centre 17): mean 11, in no box
+EDGE_LAYOUTS = {"upper": ([0, 14], [9, 15], 10), "lower": ([0, 6], [1, 15], 6), None: ([0, 16], [9, 17], 11)}
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+@pytest.mark.parametrize("edge", ["upper", "lower", None])
+def test_grid_member_test_on_a_box_edge(axis, edge):
+    """RVA 0x15A5C20 reads inclusive (bx <= M <= bx + bw): a mean exactly on a grid-box edge is inside; the
+    open-bound convention (bx < M < bx + bw) counts it as outside. The model keeps both."""
+    lo, hi, m = EDGE_LAYOUTS[edge]
+    lo, hi, other0, other1 = np.array(lo), np.array(hi), np.array([0, 0]), np.array([9, 9])
+    args = (lo, hi, other0, other1) if axis == "x" else (other0, other1, lo, hi)
+    mean, _, fallback, strict, _ = grid_centre(*args)
+    assert mean == ((m, 5) if axis == "x" else (5, m))
+    assert fallback == (edge is None)          # inclusive: on an edge = inside; between the boxes = outside
+    assert strict                              # open bounds: on an edge = outside too
+
+
+def test_crash_g2_counts_the_open_bound():
+    """Grid dx 0 with the mean on a grid-box edge: inside under the inclusive test, outside under the open one.
+    crash_g2 must flag it (conservative across compare conventions)."""
+    # box 1 pixels x 0..9 (grid 0..10); box 2 pixels x a..a+w; both y 0..9: search the first layout with
+    # grid dx 0 and the mean exactly on a grid-box edge
+    found = None
+    for a in range(10, 60, 2):
+        for w in range(0, 20):
+            b = _boxes([0, a], [9, a + w], [0, 0], [9, 9])
+            c = region_centre(9, [1, 2], b, 1000)
+            if c.dx_g2 == 0 and not c.fallback_g2 and c.fallback_g2_strict:
+                found = c
+                break
+        if found:
+            break
+    assert found is not None
+    assert found.crash_g2 and found.unsafe
+
+
+def test_open_bound_changes_no_grid_verdict_elsewhere():
+    """fallback_g2 implies fallback_g2_strict (outside inclusive -> outside open)."""
+    rng = np.random.default_rng(7)
+    for _ in range(3000):
+        k = int(rng.integers(1, 5))
+        x0 = rng.integers(0, 60, k)
+        y0 = rng.integers(0, 60, k)
+        c = region_centre(1, list(range(1, k + 1)), _boxes(x0, x0 + rng.integers(0, 12, k), y0,
+                                                           y0 + rng.integers(0, 12, k)), 10_000)
+        assert not c.fallback_g2 or c.fallback_g2_strict
 
 
 def test_grid_mean_is_the_old_mean_or_one_more():
@@ -50,7 +105,7 @@ def test_grid_mean_is_the_old_mean_or_one_more():
         c = region_centre(1, list(range(1, k + 1)), b, 10_000)
         assert c.mean_g2[0] - c.mean[0] in (0, 1) and c.mean_g2[1] - c.mean[1] in (0, 1)
         if c.clear:
-            assert not c.fallback_g2
+            assert not c.fallback_g2 and not c.fallback_g2_strict and not c.crash_g2
 
 
 def test_unsafe_is_the_union_of_both_models():
@@ -61,6 +116,20 @@ def test_unsafe_is_the_union_of_both_models():
     b = region_centre(9, [1, 2], _boxes([32, 13], [37, 22], [4, 12], [5, 17]), 1000)
     assert b.dx == 0 and b.unsafe_old and b.dx_g2 == 1 and not b.crash_g2 and b.unsafe
     assert guard_failures({9: a}) == [9] and guard_failures({9: b}) == [9]
+
+
+def test_diag03_names_the_clause_that_fired():
+    from dataclasses import replace
+    from experiments.diag03 import unsafe_why
+    a = region_centre(9, [1, 2], _boxes([9, 12], [19, 17], [10, 33], [13, 37]), 1000)   # grid only
+    b = region_centre(9, [1, 2], _boxes([32, 13], [37, 22], [4, 12], [5, 17]), 1000)    # old dx only
+    assert unsafe_why(a) == "grid dx = 0"
+    assert unsafe_why(b) == "dx = 0 (old boxes)"
+    # dx 0 but the mean inside a box under the strict old test, dy 0 on the fallback: only "dy" fired
+    c = replace(b, fallback_strict=False, fallback=True, dy=0, dx=0, dx_g2=5)
+    assert c.unsafe and unsafe_why(c) == "dy = 0 (old boxes, flagged only as caution)"
+    e = replace(a, fallback_g2=False, fallback_g2_strict=True)
+    assert e.crash_g2 and unsafe_why(e) == "grid dx = 0 (mean on a grid-box edge: open bound only)"
 
 
 def test_wrapping_region_is_never_a_grid_crash_only_unknown():
@@ -126,7 +195,16 @@ def test_probe_readmes_state_the_model_values_and_both_outcomes():
                                                     "region_file": "193-Northern Australia.txt",
                                                     "state_file": "872-North Queensland.txt", "model": model}})
     assert "province 4505" in trap and "into 2 pieces" in trap and "+1 under the corrected one; it loaded" in trap
-    assert "If it loads" in trap and "Run order: EXP-03-191only first, then EXP-03-div0b" in trap
+    assert "If it loads" in trap and "Both models predict this crash" in trap
+    assert "EXPECTED IN GAME (both models predict it)" in trap
+    grid = dict(model, dx=-3)
+    only = e.readme(ctx, "EXP-03-div0c", {"trap": {"region": 193, "province": 1501, "pieces": 2,
+                                                    "region_file": "193-Northern Australia.txt",
+                                                    "state_file": "x.txt", "model": grid}})
+    assert "ONLY the corrected 2-pixel-grid model predicts" in only and "(its divisor is -3)" in only
+    assert "The first model would expect it to load" in only and "If it loads" in only
+    order = "Run order: EXP-03-191only first, then EXP-03-div0c, then EXP-03-div0b."
+    assert all(order in t for t in (local, trap, only))
 
 
 # ---------------------------------------------------------------- against the game install
@@ -205,3 +283,18 @@ def test_div0b_divides_by_zero_under_both_models(ctx):
     assert c.fallback_all and c.dx == 0 and c.fallback_g2 and c.dx_g2 == 0 and c.crash_g2
     assert t["province"] != 2166                                   # not the div0 cut
     assert (t["region"], t["province"], t["pieces"]) == (193, 4505, 2)
+
+
+def test_div0c_divides_by_zero_only_under_the_grid_model(ctx):
+    """P00b-f5 r2: the mirror of EXP-03-div0 (old dx 0, grid dx +1, loaded): old model safe, grid dx 0."""
+    from experiments.exp03 import Exp03, centres_of, region_lookup
+    v = ctx.vanilla
+    n0 = v.definition.n
+    pid, root, _, info = Exp03().make(v, "EXP-03-div0c")
+    t = info["trap"]
+    c = centres_of(pid, root, region_lookup(v, n0))[t["region"]]
+    assert set(root[n0:].tolist()) == {t["province"]} and len(root) - n0 == t["pieces"] - 1
+    assert (t["region"], t["province"], t["pieces"]) == (193, 1501, 2)
+    assert c.dx == -1 and c.dy != 0 and not c.unsafe_old                 # the old model: no division by zero
+    assert c.fallback_g2 and c.dx_g2 == 0 and c.crash_g2 and c.unsafe   # the grid model: divides by zero
+    assert c.mean_g2 == (4951, 419) and c.rect_g2 == (4834, 336, 234, 154)
