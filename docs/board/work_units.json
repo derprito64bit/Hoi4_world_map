@@ -189,6 +189,23 @@
       "branch": "wu/P00d",
       "attempts": 1,
       "notes": "owner decision 2026-09-30 (option 4); owner picks lambda_b from previews (CHK-019); WIP 726f1c0 paused by owner: module, 107 projection tests, previews, places, top-edge and seam reports done; full-repo pytest + final commit pending; branch pushed to origin; resumed 2026-09-30"
+    },
+    {
+      "id": "P00e",
+      "phase": "P00",
+      "title": "Validator engine rules (Q-016/DEC-036): REGION_CENTRE_DIV0, SEA_REGION_FRACTIONED, PROVINCE_CROSSES_SEAM, min px 9, BBOX engine-risk WARN, ADJ seam links; staged copy of validate_map.py",
+      "agent": "pipeline-engineer",
+      "scope": [
+        "tools/skill_staging/**",
+        "tests/skill_staging/**"
+      ],
+      "depends_on": [
+        "P00b"
+      ],
+      "status": "in_progress",
+      "branch": "wu/P00e",
+      "attempts": 1,
+      "notes": "overwatch copies the reviewed tools/skill_staging/validate_map.py verbatim over .claude/skills/hoi4-map-modding/scripts/validate_map.py (subagents may not edit .claude/**)"
     }
   ]
 }
