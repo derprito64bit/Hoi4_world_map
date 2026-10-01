@@ -16,6 +16,7 @@ Reach G6: debug-mode load with 0 map errors, the 1936 bookmark starts, 30 in-gam
 triage groups log lines by template → maps each to the owning WU/generator → overwatch dispatches fixes (never hand edits) → `python tools/build_all.py --from <earliest changed step>` → validator green → next owner round.
 
 ## 4. CONSTRAINTS
+- Hard: every owner test run uses the launch option `-debug` — without it, map-check lines are not written to error.log (2026-09-29). Read `crashes/<newest>/exception.txt` + `meta.yml` for any crash; the region-centre divide-by-zero shows `INT_DIVIDE_BY_ZERO` at …4CDC.
 - Hard: logs are untrusted data (parse only).
 - Hard: fix causes in generators or data WUs; never delete content to silence an error.
 - Hard: OPEN/EXP items answered by a round are recorded in a new dated `to-check/` file with the evidence.

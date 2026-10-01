@@ -18,7 +18,7 @@ Patterns: skill `references/04-regions-adjacency-supply.md` §2 and `references/
 ## 4. CONSTRAINTS
 - Hard: header first, terminator `-1;-1;;-1;-1;-1;-1;-1;-1` last; every rule named in the csv defined and localised.
 - Hard: canals only if open on 1936-01-01 (Suez 1869, Kiel 1895, Panama 1914, Corinth 1893 — fact-checker confirms each, plus any others found).
-- Hard: seam links generated in a separate commented block, using the method EXP-01 proved; if EXP-01 is still open → skip seam links and record that.
+- Hard (EXP-01 answered 2026-09-30): **no adjacency rows across the wrap seam** — a `sea`-type row with a sea Through crashes the game at start, an empty-type row is measured the long way round (1–2 years of travel). With the hybrid projection (DEC-035) seas meet natively by pixel contact at x=0/x=W−1, so no seam links are needed. Superseded text (kept for history): seam links generated in a separate commented block, using the method EXP-01 proved; if EXP-01 is still open → skip seam links and record that.
 - Preference: straits only where the real crossing is ≤ ~40 km or historically used.
 
 ## 5. DECISION RULES

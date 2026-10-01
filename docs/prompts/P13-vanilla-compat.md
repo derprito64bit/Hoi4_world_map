@@ -16,7 +16,7 @@ Make vanilla 1.19.x focus trees, events, decisions, history and AI work on the n
 - Vanilla is also the "did we forget a territory?" coverage check (DEC-025): every vanilla state's geocoded area must fall inside some new state.
 
 ## 4. CONSTRAINTS
-- Hard: every vanilla state ID is assigned to exactly one new state (the anchor); new states get IDs above the highest vanilla ID; no ID reused for a different place.
+- Hard: every vanilla state ID is assigned to exactly one new state (the anchor); new states get IDs above the highest vanilla ID; the final ID set is gap-free 1..S (a gap is fatal, EXP-07); no ID reused for a different place.
 - Hard: vanilla text is read at build time and never committed; overrides are written into gitignored mod paths.
 - Hard: coverage report `data/compat/coverage.csv` lists every reference (file, line, pattern, vanilla id, action: mapped-anchor | mapped-all-children | mapped-province | needs-human | not-applicable).
 - Hard: geocoding sources are cited per vanilla state (gazetteer name + coordinates + confidence).

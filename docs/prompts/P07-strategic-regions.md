@@ -17,6 +17,7 @@ Rules: skill `references/04-regions-adjacency-supply.md` §1; format `references
 
 ## 4. CONSTRAINTS
 - Hard: every province in exactly one region; every state inside one region; IDs 1..R.
+- Hard (engine rules, P00b 2026-09-30; SKILL.md invariants 15–16): **every naval region is one pixel-connected piece** of sea members (4-neighbour, wrap counts, adjacency links don't) — else a fatal MAP_ERROR; **`regioncentre.guard_failures(..., observed={}) == 0`** for every region (the 2-px-grid divide-by-zero crashes the game at load) — prefer region means ≥ 1 px inside a member box; avoid regular/symmetric tilings. The validator codes `SEA_REGION_FRACTIONED` / `REGION_CENTRE_DIV0` (P00e) must be 0.
 - Hard: 12 monthly `period` blocks, `between` 0-based day.month covering the year, weights ≥ 0, southern-hemisphere seasons inverted.
 - Hard: `naval_terrain` from bathymetry (< 200 m shelf → `water_shallow_sea`; fjord coasts → `water_fjords`; else `water_deep_ocean`).
 - Preference: land regions 25–60 land provinces; sea regions 10–60 provinces named after historical theatres.

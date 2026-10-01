@@ -28,7 +28,9 @@ Calibration: vanilla **1.19.3** (P00) → 0 ERROR, WARN: `DEF_SEA_CONTINENT` (1 
 Not checked (manual / in-game): weather realism, bbox exact limit, province count ceiling, DDS sizes, unitstacks completeness, localisation completeness (write a grep check per phase), nudger positions.
 
 ## 3. Debug mode and error.log (human step)
-- Launch option `-debug` (Steam → Properties → Launch options). Without it, any MAP_ERROR closes the game at load [C].
+- Launch option `-debug` (Steam → Properties → Launch options). Without it, any MAP_ERROR closes the game at load [C]. **Measured 2026-09-29: without `-debug` the map-check lines (`TOO LARGE BOX`, `MAP_ERROR … fractioned`, small-province lines) are not written to error.log at all** — a fatal map error then shows only the dialog "Failed to load the map". Every in-game test runs with `-debug`.
+- Crash dumps: `Documents/Paradox Interactive/Hearts of Iron IV/crashes/<newest>/exception.txt` (+ `meta.yml` lists the active mods). The region-centre divide-by-zero always shows `EXCEPTION_INT_DIVIDE_BY_ZERO` at an address ending `…4CDC` (1.19.3) during map load, before `Loaded N provinces` in game.log.
+- `naval_dist.cache` / `naval_dist_checksum.cache` (user folder root) are rebuilt by the game; deleting them is safe when testing sea links.
 - Log folder: `Documents/Paradox Interactive/Hearts of Iron IV/logs/` → `error.log`, `game.log`. Clear it before each test.
 - Typical map errors [C]: "Map invalid X crossing. Please fix pixels at coords", "Province X has only Y pixels … Should have at least 8", "TOO LARGE BOX", missing definitions for bitmap colours, provinces in no state / no strategic region, naval base without position.
 

@@ -9,10 +9,10 @@
 ## 2. Hard limits
 | Limit | Value | Evidence |
 |---|---|---|
-| Min pixels per province | 8 ("Province X has only Y pixels … Should have at least 8") | [C] error text |
+| Min pixels per province | **9** (project floor). The engine logs `map.cpp:1842 Province X has only Y pixels around … Should have at least 8` for every province ≤ 8 px — including exactly 8 — non-fatal (EXP-04, 2026-09-30, `-debug` only) | [T] in game |
 | X-crossings | 0 allowed (MAP_ERROR "Map invalid X crossing") | [C] |
-| Bounding box | "TOO LARGE BOX" if pixels are spread too far; exact threshold **unverified**. Vanilla max side: land 280 px, sea 179 px (map W=5632). Validator warns at W/8. Keep land ≤ 250 px and sea ≤ 180 px until tested. | [C] + [V] |
-| Province count | Community snippet says "less than 19,000"; **unverified**. Vanilla 13,362. Provisional project budget ≈ 20,000 (PROJECT_SPEC) until EXP-03 measures the real ceiling (OPEN-2). | [C] weak |
+| Bounding box | `map.cpp:1830 Province N has TOO LARGE BOX` when **width > Tw ∈ [600, 1200) OR height > Th ∈ [174, 300)** px; area, pixel count and w+h are not the rule. Non-fatal, but unit/ship stacks are drawn "too far away from center". Logged only with `-debug`. Clean: vanilla 280×115, 600×56 strips, 440×150 filled; flagged: 1200 strips, 2188×14, 70×440, 150×300, 400×400. Project limit land 250 / sea 180 (max side). A province crossing the wrap seam is measured as full width → always flagged. | [T] EXP-02/02c, 2026-09-30 |
+| Province count | **16k, 20k, 24k and 30k load and play smoothly** (EXP-03, owner PC); project budget ≈ 20,000 confirmed. The one 24k crash was the region-centre divide-by-zero (SKILL.md invariant 16), not a ceiling. | [T] 2026-09-30 |
 | Colour | unique 24-bit RGB; not `0,0,0` | [V] |
 
 ## 3. Vanilla calibration (5632×2048, Miller-like, cropped)

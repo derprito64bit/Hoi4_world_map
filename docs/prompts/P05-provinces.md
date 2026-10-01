@@ -19,7 +19,8 @@ Review: code-reviewer, visual-qa (provinces + seam + off-globe previews), valida
 
 ## 4. CONSTRAINTS
 - Hard: no province crosses a state border, an overlay line, the seam, or a surface-class border.
-- Hard: SKILL.md invariants 1–6; ≥ 8 px (target ≥ 30 px land); 0 X-crossings (incl. seam); bbox ≤ limits.
+- Hard: SKILL.md invariants 1–6 and 14–17; ≥ 9 px (target ≥ 30 px land; the engine logs ≤ 8 px); 0 X-crossings (incl. seam); bbox ≤ limits (250/180 max side; engine TOO LARGE BOX at width ≥ ~600 or height ≥ ~174); **no province crosses the wrap seam** (measured as full width).
+- Hard (engine rules, P00b 2026-09-30): after provinces are assigned to the skeleton regions, the region-centre guard `regioncentre.guard_failures(..., observed={})` must be 0 and every naval region must be pixel-contiguous (incl. across the wrap); both run in P05's `--check`, not only in P07.
 - Hard: deterministic (seeded; two runs → identical SHA-256); colours unique, never `0,0,0`.
 - Hard: ID policy — skeleton pass assigns IDs (land by state → sea → lake → off-globe); after the first merge IDs are **never renumbered or reused**; splits append.
 - Hard: `continent.txt` = the 7 vanilla continents (Antarctica cropped, DEC-002).

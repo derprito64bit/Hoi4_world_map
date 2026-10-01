@@ -18,6 +18,7 @@ Review: fact-checker (every attribute row), history-auditor (G4 sample), code-re
 - Countries: `data/countries/tags.csv` (P04-S-list), rule PROJECT_SPEC `COUNTRIES`.
 
 ## 4. CONSTRAINTS
+- Hard: state IDs exactly 1..S with no gap — a gap crashes the game on scenario start (EXP-07, 2026-09-30).
 - Hard: every land province in exactly one state; no sea province in a state; VPs/provincial buildings/naval bases only on provinces of that state; naval bases only on coastal provinces.
 - Hard: manpower = census population nearest 1936 with the method recorded (census, or grid share of a census total) — never copied from vanilla.
 - Hard: resources only with a cited 1936 deposit/production source; report totals per resource vs. vanilla 1.19.
