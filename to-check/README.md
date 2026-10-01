@@ -22,4 +22,5 @@ Status values: `OPEN`, `DONE (date, evidence)`, `CHANGED (see <file>#<id>)`, `DR
 | [2026-09-28_exp-results.md](2026-09-28_exp-results.md) | 2026-09-28..30 | all in-game results EXP-01..09 + probes, Q-009..Q-012 |
 | [2026-09-30_projection-decision.md](2026-09-30_projection-decision.md) | 2026-09-30 | DEC-035 hybrid projection, Q-013/Q-014, S14 change list, CHK-019/020 |
 | [2026-09-30_prompt-overwatch-scope.md](2026-09-30_prompt-overwatch-scope.md) | 2026-09-30 | the prompt used to grant overwatch project-file access (CHK-020, done) |
-| [2026-09-30_followups.md](2026-09-30_followups.md) | 2026-09-30 (newest) | S12/S13/S15 spec, skill and validator updates from the test results; disk cleanup (Q-015..Q-017) |
+| [2026-09-30_followups.md](2026-09-30_followups.md) | 2026-09-30 | S12/S13/S15 spec, skill and validator updates from the test results; disk cleanup (Q-015..Q-017) |
+| [2026-10-01_archive.md](2026-10-01_archive.md) | 2026-10-01 (newest) | project parked/archived: the publication safety check and the resume plan |

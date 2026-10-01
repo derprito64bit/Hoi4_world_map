@@ -185,10 +185,10 @@
       "depends_on": [
         "P00b"
       ],
-      "status": "in_progress",
+      "status": "blocked",
       "branch": "wu/P00d",
       "attempts": 1,
-      "notes": "owner decision 2026-09-30 (option 4); owner picks lambda_b from previews (CHK-019); WIP 726f1c0 paused by owner: module, 107 projection tests, previews, places, top-edge and seam reports done; full-repo pytest + final commit pending; branch pushed to origin; resumed 2026-09-30"
+      "notes": "owner decision 2026-09-30 (option 4); owner picks lambda_b from previews (CHK-019); WIP 726f1c0 paused by owner: module, 107 projection tests, previews, places, top-edge and seam reports done; full-repo pytest + final commit pending; branch pushed to origin; resumed 2026-09-30; r1 review: code 0/1/7, visual-qa 2 P1 (owner decisions) /7 P2, triage FIX (P00d-r1-01 inverse per-point convergence) \u2014 PARKED 2026-10-01 (project archived), branch wu/P00d on origin, not merged"
     },
     {
       "id": "P00e",
@@ -202,10 +202,10 @@
       "depends_on": [
         "P00b"
       ],
-      "status": "in_progress",
+      "status": "blocked",
       "branch": "wu/P00e",
       "attempts": 1,
-      "notes": "overwatch copies the reviewed tools/skill_staging/validate_map.py verbatim over .claude/skills/hoi4-map-modding/scripts/validate_map.py (subagents may not edit .claude/**)"
+      "notes": "overwatch copies the reviewed tools/skill_staging/validate_map.py verbatim over .claude/skills/hoi4-map-modding/scripts/validate_map.py (subagents may not edit .claude/**); WIP 5ca92f0 (unreviewed; stopped by a session limit) \u2014 PARKED 2026-10-01, branch wu/P00e on origin"
     }
   ]
 }
