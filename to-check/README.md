@@ -17,4 +17,9 @@ Status values: `OPEN`, `DONE (date, evidence)`, `CHANGED (see <file>#<id>)`, `DR
 | [2026-09-28_self-audit.md](2026-09-28_self-audit.md) | 2026-09-28 | self-audit of prompts/skill/agents against 1.19.3 evidence: 15 fixes, 4 items still unverified |
 | [2026-09-27_local-setup.md](2026-09-27_local-setup.md) | 2026-09-27 (local clock, written after the 09-28 files) | P00-pre local Windows setup, CHK-010..013 |
 | [2026-09-27_p00-baseline.md](2026-09-27_p00-baseline.md) | 2026-09-27 (local clock) | P00 results: 1.19.3 baseline, engine limits, renderer facts, Q-003..Q-008 for Gate G0 |
-| [2026-09-28_g0-answers.md](2026-09-28_g0-answers.md) | 2026-09-28 (newest) | Gate G0 answers (DEC-029..034), S1–S11 applied, CHK-014 re-run pending |
+| [2026-09-28_g0-answers.md](2026-09-28_g0-answers.md) | 2026-09-28 | Gate G0 answers (DEC-029..034), S1–S11 applied, CHK-014 re-run pending |
+| [2026-09-28_p00b-kit.md](2026-09-28_p00b-kit.md) | 2026-09-28 | experiment kit: run order, what to send back, CHK-014..017 |
+| [2026-09-28_exp-results.md](2026-09-28_exp-results.md) | 2026-09-28..30 | all in-game results EXP-01..09 + probes, Q-009..Q-012 |
+| [2026-09-30_projection-decision.md](2026-09-30_projection-decision.md) | 2026-09-30 | DEC-035 hybrid projection, Q-013/Q-014, S14 change list, CHK-019/020 |
+| [2026-09-30_prompt-overwatch-scope.md](2026-09-30_prompt-overwatch-scope.md) | 2026-09-30 | the prompt used to grant overwatch project-file access (CHK-020, done) |
+| [2026-09-30_followups.md](2026-09-30_followups.md) | 2026-09-30 (newest) | S12/S13/S15 spec, skill and validator updates from the test results; disk cleanup (Q-015..Q-017) |
